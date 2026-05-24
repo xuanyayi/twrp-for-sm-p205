@@ -33,7 +33,10 @@ out/target/product/p205/recovery.img
 
 ## Notes
 
-- Target device: Samsung SM-P205, codename `p205`
+- Device: Samsung Galaxy Tab A 8.0 with S Pen
+- Model: `SM-P205`
+- Samsung codename: `wisdom` / `wisdomx`
+- Device tree path: `device/samsung/p205`
 - Recovery variant: TWRP 12.1
 - Odin flashing uses `recovery.img` packed as `recovery.img` inside a tar archive.
 - If you want to silence the harmless `indeterminate014` progress animation probe in logs, patch the TWRP theme resources in `bootable/recovery`; this device tree does not vendor TWRP framework assets.
