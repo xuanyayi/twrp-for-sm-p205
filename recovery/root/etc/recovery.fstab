@@ -3,6 +3,7 @@
 /cache           ext4  /dev/block/platform/13500000.dwmmc0/by-name/cache    flags=backup=0;display="Cache"
 /data            ext4  /dev/block/platform/13500000.dwmmc0/by-name/userdata flags=encryptable=footer,length=-20480
 /efs             ext4  /dev/block/platform/13500000.dwmmc0/by-name/efs      flags=backup=1;display="EFS"
+/misc            emmc  /dev/block/platform/13500000.dwmmc0/by-name/misc     flags=backup=0;display="Misc"
 /omr             ext4  /dev/block/platform/13500000.dwmmc0/by-name/omr      flags=backup=0;display="OMR"
 /product         ext4  /dev/block/platform/13500000.dwmmc0/by-name/product  flags=backup=1;wipeingui;display="Product"
 /system_root     ext4  /dev/block/platform/13500000.dwmmc0/by-name/system   flags=backup=1;wipeingui;display="System"

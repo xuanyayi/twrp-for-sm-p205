@@ -17,15 +17,25 @@
 # Release name
 PRODUCT_RELEASE_NAME := p205
 
-# Inherit from the common Open Source product configuration
-$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base_telephony.mk) 
+# Enable the 64-bit userspace product setup required by Android 12.1.
+$(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
 
-# Inherit some common Omni stuff.
-$(call inherit-product, vendor/omni/config/common.mk)
+# Inherit from the common Open Source product configuration
+$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base_telephony.mk)
+
+# Inherit common TWRP configuration.
+$(call inherit-product, vendor/twrp/config/common.mk)
 
 ## Device identifier. This must come after all inclusions
 PRODUCT_DEVICE := p205
-PRODUCT_NAME := omni_p205
+PRODUCT_NAME := twrp_p205
 PRODUCT_BRAND := samsung
 PRODUCT_MODEL := Galaxy P205
 PRODUCT_MANUFACTURER := Samsung
+
+# Samsung recovery USB IDs used by the device configfs init script.
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
+    persist.sys.usb.config=adb \
+    usb.vendor=04E8 \
+    usb.product.adb=685D \
+    usb.product.mtpadb=6860

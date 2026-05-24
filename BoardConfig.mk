@@ -25,6 +25,7 @@ TARGET_ARCH_VARIANT := armv8-a
 TARGET_CPU_ABI := arm64-v8a
 TARGET_CPU_ABI2 :=
 TARGET_CPU_VARIANT := cortex-a53
+TARGET_CPU_VARIANT_RUNTIME := cortex-a73
 TARGET_CPU_SMP := true
 
 TARGET_2ND_ARCH := arm
@@ -32,6 +33,7 @@ TARGET_2ND_ARCH_VARIANT := armv8-a
 TARGET_2ND_CPU_ABI := armeabi-v7a
 TARGET_2ND_CPU_ABI2 := armeabi
 TARGET_2ND_CPU_VARIANT := cortex-a53
+TARGET_2ND_CPU_VARIANT_RUNTIME := cortex-a73
 TARGET_USES_64_BIT_BINDER := true
 
 ENABLE_CPUSETS := true
@@ -78,6 +80,8 @@ TARGET_COPY_OUT_VENDOR := vendor
 
 # Recovery
 BOARD_HAS_LARGE_FILESYSTEM := true
+BOARD_RECOVERYIMAGE_PARTITION_SIZE := 39845888
+TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery/root/etc/recovery.fstab
 TARGET_RECOVERY_PIXEL_FORMAT := "ABGR_8888"
 
 # Do not go full treble for recovery
@@ -93,18 +97,25 @@ RECOVERY_SDCARD_ON_DATA := true
 # Do not set up legacy properties
 TW_NO_LEGACY_PROPS := true
 TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel/brightness"
-TW_MAX_BRIGHTNESS := 255
-TW_DEFAULT_BRIGHTNESS := 96
+TW_MAX_BRIGHTNESS := 306
+TW_DEFAULT_BRIGHTNESS := 122
+TW_USE_LEGACY_BATTERY_SERVICES := true
+TW_CUSTOM_BATTERY_PATH := "/sys/class/power_supply/battery"
 TW_USE_TOOLBOX := true
-TW_Y_OFFSET := 80
-TW_H_OFFSET := -80
 TW_NO_REBOOT_BOOTLOADER := true
 TW_HAS_DOWNLOAD_MODE := true
-TW_INCLUDE_NTFS_3G := true
 TW_EXCLUDE_TWRPAPP := true
-TW_EXTRA_LANGUAGES := true
 TW_USE_NEW_MINADBD := true
 TW_EXCLUDE_DEFAULT_USB_INIT := true
-TW_INCLUDE_REPACKTOOLS := true
-TW_INCLUDE_LIBRESETPROP := true
+TW_DEDUP_RECOVERY_USB_CONFIG := true
+
+# First-stage image size trim: keep boot, touch, ADB, and basic partitions
+# inside the stock 38 MiB recovery partition before re-enabling extras.
+TW_EXCLUDE_NANO := true
+TW_EXCLUDE_BASH := true
+TW_EXCLUDE_TZDATA := true
+TW_EXCLUDE_ZIP := true
+TW_NO_EXFAT := true
+TW_NO_EXFAT_FUSE := true
+TW_EXFAT_USE_SDFAT := true
 PLATFORM_SECURITY_PATCH := 2099-12-31

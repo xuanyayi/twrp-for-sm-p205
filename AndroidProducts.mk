@@ -15,8 +15,7 @@
 #
 
 PRODUCT_MAKEFILES := \
-    $(LOCAL_DIR)/omni_p205.mk
+    $(LOCAL_DIR)/twrp_p205.mk
 
 COMMON_LUNCH_CHOICES := \
-    omni_p205-eng
-
+    twrp_p205-eng
