@@ -1,0 +1,59 @@
+diff --git a/core/Makefile b/core/Makefile
+index 51c3bf1..2b1bc38 100644
+--- a/core/Makefile
++++ b/core/Makefile
+@@ -2174,6 +2174,9 @@ $(INSTALLED_RECOVERY_BUILD_PROP_TARGET): \
+ 	$(hide) cat $(INSTALLED_ODM_BUILD_PROP_TARGET) >> $@
+ 	$(hide) cat $(INSTALLED_PRODUCT_BUILD_PROP_TARGET) >> $@
+ 	$(hide) cat $(INSTALLED_SYSTEM_EXT_BUILD_PROP_TARGET) >> $@
++ifeq ($(TW_DEDUP_RECOVERY_USB_CONFIG),true)
++	$(hide) awk 'BEGIN { seen_usb_config = 0 } /^persist[.]sys[.]usb[.]config=/ { if (seen_usb_config) next; seen_usb_config = 1 } { print }' $@ > $@.tmp && mv $@.tmp $@
++endif
+ 	$(call append-recovery-ui-properties,$(PRIVATE_RECOVERY_UI_PROPERTIES),$@)
+ 
+ # Only install boot/etc/build.prop to recovery image on recovery_as_boot.
+diff --git a/core/soong_config.mk b/core/soong_config.mk
+index 2ec39b6..30870ef 100644
+--- a/core/soong_config.mk
++++ b/core/soong_config.mk
+@@ -190,9 +190,8 @@ $(call add_json_list, BoardVendorSepolicyDirs,           $(BOARD_VENDOR_SEPOLICY
+ $(call add_json_list, BoardOdmSepolicyDirs,              $(BOARD_ODM_SEPOLICY_DIRS))
+ $(call add_json_list, BoardVendorDlkmSepolicyDirs,       $(BOARD_VENDOR_DLKM_SEPOLICY_DIRS))
+ $(call add_json_list, BoardOdmDlkmSepolicyDirs,          $(BOARD_ODM_DLKM_SEPOLICY_DIRS))
+-# TODO: BOARD_PLAT_* dirs only kept for compatibility reasons. Will be a hard error on API level 31
+-$(call add_json_list, SystemExtPublicSepolicyDirs,       $(SYSTEM_EXT_PUBLIC_SEPOLICY_DIRS) $(BOARD_PLAT_PUBLIC_SEPOLICY_DIR))
+-$(call add_json_list, SystemExtPrivateSepolicyDirs,      $(SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS) $(BOARD_PLAT_PRIVATE_SEPOLICY_DIR))
++$(call add_json_list, SystemExtPublicSepolicyDirs,       $(SYSTEM_EXT_PUBLIC_SEPOLICY_DIRS))
++$(call add_json_list, SystemExtPrivateSepolicyDirs,      $(SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS))
+ $(call add_json_list, BoardSepolicyM4Defs,               $(BOARD_SEPOLICY_M4DEFS))
+ $(call add_json_str,  BoardSepolicyVers,                 $(BOARD_SEPOLICY_VERS))
+ 
+diff --git a/core/sysprop.mk b/core/sysprop.mk
+index 05ff175..e2e44c5 100644
+--- a/core/sysprop.mk
++++ b/core/sysprop.mk
+@@ -333,8 +333,6 @@ android_info_prop := $(call intermediates-dir-for,ETC,android_info_prop)/android
+ $(android_info_prop): $(INSTALLED_ANDROID_INFO_TXT_TARGET)
+ 	cat $< | grep 'require version-' | sed -e 's/require version-/ro.build.expect./g' > $@
+ 
+-_prop_files_ += $(android_info_prop)
+-
+ ifdef property_overrides_split_enabled
+ # Order matters here. When there are duplicates, the last one wins.
+ # TODO(b/117892318): don't allow duplicates so that the ordering doesn't matter
+@@ -490,12 +488,14 @@ $(eval $(call build-properties,\
+ # ramdisk/boot/etc/build.prop
+ #
+ 
++ramdisk_prop_file := $(wildcard $(TARGET_DEVICE_DIR)/ramdisk.prop)
++
+ RAMDISK_BUILD_PROP_REL_PATH := system/etc/ramdisk/build.prop
+ INSTALLED_RAMDISK_BUILD_PROP_TARGET := $(TARGET_RAMDISK_OUT)/$(RAMDISK_BUILD_PROP_REL_PATH)
+ $(eval $(call build-properties,\
+     bootimage,\
+     $(INSTALLED_RAMDISK_BUILD_PROP_TARGET),\
+-    $(empty),\
++    $(ramdisk_prop_file),\
+     $(empty),\
+     $(empty),\
+     $(empty),\

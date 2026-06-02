@@ -1,0 +1,279 @@
+diff --git a/Android.mk b/Android.mk
+index 383adca..e6d981d 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -314,6 +314,9 @@ endif
+ ifeq ($(TW_NO_EXFAT_FUSE), true)
+     LOCAL_CFLAGS += -DTW_NO_EXFAT_FUSE
+ endif
++ifeq ($(TW_EXFAT_USE_SDFAT), true)
++    LOCAL_CFLAGS += -DTW_EXFAT_USE_SDFAT
++endif
+ ifeq ($(TW_NO_HAPTICS), true)
+     LOCAL_CFLAGS += -DTW_NO_HAPTICS
+ endif
+diff --git a/etc/init.rc b/etc/init.rc
+index 5c13ef7..984c60c 100644
+--- a/etc/init.rc
++++ b/etc/init.rc
+@@ -113,7 +113,8 @@ on property:ro.debuggable=1
+ 
+ # Always start adbd on userdebug and eng builds
+ on fs && property:ro.debuggable=1
+-    setprop sys.usb.config adb
++    # P205 uses its device-specific recovery USB init. Do not force the
++    # generic adb-only gadget before the Samsung configfs path is ready.
+ 
+ service fastbootd /system/bin/fastbootd
+     disabled
+@@ -124,7 +125,7 @@ service fastbootd /system/bin/fastbootd
+ on property:service.adb.root=1
+     restart adbd
+ 
+-on fs && property:sys.usb.configfs=1
++on fs && property:sys.usb.configfs=9
+     mount configfs none /config
+     mkdir /config/usb_gadget/g1 0770 shell shell
+     write /config/usb_gadget/g1/idVendor 0x18D1
+@@ -137,7 +138,7 @@ on fs && property:sys.usb.configfs=1
+     mkdir /config/usb_gadget/g1/configs/b.1 0777 shell shell
+     mkdir /config/usb_gadget/g1/configs/b.1/strings/0x409 0770 shell shell
+ 
+-on fs && property:sys.usb.configfs=0
++on fs && property:sys.usb.configfs=9
+     write /sys/class/android_usb/android0/f_ffs/aliases adb,fastboot
+     write /sys/class/android_usb/android0/idVendor 18D1
+     write /sys/class/android_usb/android0/iManufacturer ${ro.product.manufacturer}
+@@ -158,32 +159,32 @@ on property:sys.usb.config=adb
+ on property:sys.usb.config=fastboot
+     start fastbootd
+ 
+-on property:sys.usb.config=none && property:sys.usb.configfs=0
++on property:sys.usb.config=none && property:sys.usb.configfs=9
+     stop adbd
+     stop fastbootd
+     write /sys/class/android_usb/android0/enable 0
+     setprop sys.usb.state ${sys.usb.config}
+ 
+-on property:sys.usb.config=adb && property:sys.usb.configfs=0
++on property:sys.usb.config=adb && property:sys.usb.configfs=9
+     write /sys/class/android_usb/android0/idProduct D001
+     write /sys/class/android_usb/android0/functions adb
+     write /sys/class/android_usb/android0/enable 1
+     setprop sys.usb.state ${sys.usb.config}
+ 
+-on property:sys.usb.config=sideload && property:sys.usb.configfs=0
++on property:sys.usb.config=sideload && property:sys.usb.configfs=9
+     write /sys/class/android_usb/android0/idProduct D001
+     write /sys/class/android_usb/android0/functions adb
+     write /sys/class/android_usb/android0/enable 1
+     setprop sys.usb.state ${sys.usb.config}
+ 
+-on property:sys.usb.config=fastboot && property:sys.usb.configfs=0
++on property:sys.usb.config=fastboot && property:sys.usb.configfs=9
+     write /sys/class/android_usb/android0/idProduct 4EE0
+     write /sys/class/android_usb/android0/functions fastboot
+     write /sys/class/android_usb/android0/enable 1
+     setprop sys.usb.state ${sys.usb.config}
+ 
+ # Configfs triggers
+-on property:sys.usb.config=none && property:sys.usb.configfs=1
++on property:sys.usb.config=none && property:sys.usb.configfs=9
+     write /config/usb_gadget/g1/UDC "none"
+     stop adbd
+     stop fastbootd
+@@ -191,21 +192,21 @@ on property:sys.usb.config=none && property:sys.usb.configfs=1
+     rm /config/usb_gadget/g1/configs/b.1/f1
+     setprop sys.usb.state ${sys.usb.config}
+ 
+-on property:sys.usb.config=sideload && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
++on property:sys.usb.config=sideload && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=9
+     write /config/usb_gadget/g1/idProduct 0xD001
+     write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "adb"
+     symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f1
+     write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+     setprop sys.usb.state ${sys.usb.config}
+ 
+-on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
++on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=9
+     write /config/usb_gadget/g1/idProduct 0xD001
+     write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "adb"
+     symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f1
+     write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+     setprop sys.usb.state ${sys.usb.config}
+ 
+-on property:sys.usb.config=fastboot && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
++on property:sys.usb.config=fastboot && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=9
+     write /config/usb_gadget/g1/idProduct 0x4EE0
+     write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "fastboot"
+     symlink /config/usb_gadget/g1/functions/ffs.fastboot /config/usb_gadget/g1/configs/b.1/f1
+diff --git a/gui/libguitwrp_defaults.go b/gui/libguitwrp_defaults.go
+index b1e114e..4f9ed1b 100644
+--- a/gui/libguitwrp_defaults.go
++++ b/gui/libguitwrp_defaults.go
+@@ -40,6 +40,43 @@ func printCustomThemeWarning(theme string, location string) {
+ 	fmt.Printf(customThemeWarning)
+ }
+ 
++func copyLanguage(ctx android.BaseContext, recoveryDir string, language string) {
++	if language == "" {
++		return
++	}
++
++	languageFile := "gui/theme/common/languages/" + language + ".xml"
++	if _, err := os.Stat(recoveryDir + languageFile); err != nil {
++		languageFile = "gui/theme/extra-languages/languages/" + language + ".xml"
++	}
++	copyFile(recoveryDir+languageFile, ctx.Config().Getenv("OUT")+"/recovery/root/twres/languages/"+language+".xml")
++}
++
++func copySelectedLanguages(ctx android.BaseContext, recoveryDir string) {
++	languageDest := ctx.Config().Getenv("OUT") + "/recovery/root/twres/languages"
++	languages := strings.Fields(getMakeVars(ctx, "TW_LANGUAGES"))
++	if len(languages) == 0 {
++		copyDir(recoveryDir+"gui/theme/common/languages/", languageDest)
++		return
++	}
++
++	os.RemoveAll(languageDest)
++	os.MkdirAll(languageDest, os.ModePerm)
++	for _, language := range languages {
++		copyLanguage(ctx, recoveryDir, language)
++	}
++}
++
++func copyExtraLanguageFonts(ctx android.BaseContext, recoveryDir string) {
++	languages := strings.Fields(getMakeVars(ctx, "TW_LANGUAGES"))
++	for _, language := range languages {
++		if language == "zh_CN" || language == "zh_TW" {
++			copyFile(recoveryDir+"gui/theme/extra-languages/fonts/DroidSansFallback.ttf", ctx.Config().Getenv("OUT")+"/recovery/root/twres/fonts/DroidSansFallback.ttf")
++			return
++		}
++	}
++}
++
+ func copyThemeResources(ctx android.BaseContext, dirs []string, files []string) {
+ 	outDir := ctx.Config().Getenv("OUT")
+ 	twRes := outDir + "/recovery/root/twres/"
+@@ -57,8 +94,13 @@ func copyThemeResources(ctx android.BaseContext, dirs []string, files []string)
+ 		} else {
+ 			dirToCopy = recoveryDir + dir
+ 		}
+-		copyDir(dirToCopy, destDir)
++		if baseDir == "languages" && strings.HasSuffix(dir, "common/languages/") {
++			copySelectedLanguages(ctx, recoveryDir)
++		} else {
++			copyDir(dirToCopy, destDir)
++		}
+ 	}
++	copyExtraLanguageFonts(ctx, recoveryDir)
+ 	for idx, file := range files {
+ 		_ = idx
+ 		fileToCopy := recoveryDir + file
+diff --git a/partition.cpp b/partition.cpp
+index 184cb16..36717a1 100755
+--- a/partition.cpp
++++ b/partition.cpp
+@@ -1185,6 +1185,7 @@ bool TWPartition::Is_File_System(string File_System) {
+ 		File_System == "ext3" ||
+ 		File_System == "ext4" ||
+ 		File_System == "vfat" ||
++		File_System == "sdfat" ||
+ 		File_System == "ntfs" ||
+ 		File_System == "yaffs2" ||
+ 		File_System == "exfat" ||
+@@ -1685,15 +1686,22 @@ bool TWPartition::Mount(bool Display_Error) {
+ 	}
+ 
+ 	string mount_fs = Current_File_System;
+-	if (Current_File_System == "exfat" && TWFunc::Path_Exists("/sys/module/texfat"))
+-		mount_fs = "texfat";
++	if (Current_File_System == "exfat") {
++#ifdef TW_EXFAT_USE_SDFAT
++		if (TWFunc::Path_Exists("/sys/fs/sdfat") || TWFunc::Path_Exists("/sys/module/sdfat"))
++			mount_fs = "sdfat";
++		else
++#endif
++		if (TWFunc::Path_Exists("/sys/module/texfat"))
++			mount_fs = "texfat";
++	}
+ 
+ 	if (!exfat_mounted &&
+ 		mount(Actual_Block_Device.c_str(), Mount_Point.c_str(), mount_fs.c_str(), flags, Mount_Options.c_str()) != 0 &&
+ 		mount(Actual_Block_Device.c_str(), Mount_Point.c_str(), mount_fs.c_str(), flags, NULL) != 0) {
+ #ifdef TW_NO_EXFAT_FUSE
+ 		if (Current_File_System == "exfat") {
+-			LOGINFO("Mounting exfat failed, trying vfat...\n");
++			LOGINFO("Mounting exfat with '%s' failed, trying vfat...\n", mount_fs.c_str());
+ 			if (mount(Actual_Block_Device.c_str(), Mount_Point.c_str(), "vfat", 0, NULL) != 0) {
+ 				if (Display_Error)
+ 					gui_msg(Msg(msg::kError, "fail_mount=Failed to mount '{1}' ({2})")(Mount_Point)(strerror(errno)));
+@@ -3285,7 +3293,7 @@ uint64_t TWPartition::Get_Max_FileSize() {
+ 		maxFileSize = 4 * constGB; //4 GB
+ 	else if (Current_File_System == "ntfs" || Current_File_System == "tntfs")
+ 		maxFileSize = 256 * constTB; //256 TB
+-	else if (Current_File_System == "exfat")
++	else if (Current_File_System == "exfat" || Current_File_System == "sdfat")
+ 		maxFileSize = 16 * constPB; //16 PB
+ 	else if (Current_File_System == "ext3")
+ 		maxFileSize = 2 * constTB; //2 TB
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+index 2766b4c..9f4c6e3 100755
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -2786,15 +2786,19 @@ bool TWPartitionManager::Enable_MTP(void) {
+ 	char old_value[PROPERTY_VALUE_MAX];
+ 	property_get("sys.usb.config", old_value, "");
+ 	if (strcmp(old_value, "mtp,adb") != 0) {
+-		char vendor[PROPERTY_VALUE_MAX];
+-		char product[PROPERTY_VALUE_MAX];
++		char configfs[PROPERTY_VALUE_MAX];
+ 		property_set("sys.usb.config", "none");
+-		property_get("usb.vendor", vendor, "18D1");
+-		property_get("usb.product.mtpadb", product, "4EE2");
+-		string vendorstr = vendor;
+-		string productstr = product;
+-		TWFunc::write_to_file("/sys/class/android_usb/android0/idVendor", vendorstr);
+-		TWFunc::write_to_file("/sys/class/android_usb/android0/idProduct", productstr);
++		property_get("sys.usb.configfs", configfs, "0");
++		if (strcmp(configfs, "1") != 0) {
++			char vendor[PROPERTY_VALUE_MAX];
++			char product[PROPERTY_VALUE_MAX];
++			property_get("usb.vendor", vendor, "18D1");
++			property_get("usb.product.mtpadb", product, "4EE2");
++			string vendorstr = vendor;
++			string productstr = product;
++			TWFunc::write_to_file("/sys/class/android_usb/android0/idVendor", vendorstr);
++			TWFunc::write_to_file("/sys/class/android_usb/android0/idProduct", productstr);
++		}
+ 		property_set("sys.usb.config", "mtp,adb");
+ 	}
+ 	/* To enable MTP debug, use the twrp command line feature:
+@@ -2842,15 +2846,19 @@ bool TWPartitionManager::Disable_MTP(void) {
+ 	property_set("sys.usb.ffs.mtp.ready", "0");
+ 	property_get("sys.usb.config", old_value, "");
+ 	if (strcmp(old_value, "adb") != 0) {
+-		char vendor[PROPERTY_VALUE_MAX];
+-		char product[PROPERTY_VALUE_MAX];
++		char configfs[PROPERTY_VALUE_MAX];
+ 		property_set("sys.usb.config", "none");
+-		property_get("usb.vendor", vendor, "18D1");
+-		property_get("usb.product.adb", product, "D001");
+-		string vendorstr = vendor;
+-		string productstr = product;
+-		TWFunc::write_to_file("/sys/class/android_usb/android0/idVendor", vendorstr);
+-		TWFunc::write_to_file("/sys/class/android_usb/android0/idProduct", productstr);
++		property_get("sys.usb.configfs", configfs, "0");
++		if (strcmp(configfs, "1") != 0) {
++			char vendor[PROPERTY_VALUE_MAX];
++			char product[PROPERTY_VALUE_MAX];
++			property_get("usb.vendor", vendor, "18D1");
++			property_get("usb.product.adb", product, "D001");
++			string vendorstr = vendor;
++			string productstr = product;
++			TWFunc::write_to_file("/sys/class/android_usb/android0/idVendor", vendorstr);
++			TWFunc::write_to_file("/sys/class/android_usb/android0/idProduct", productstr);
++		}
+ 		usleep(2000);
+ 	}
+ #ifdef TW_HAS_MTP

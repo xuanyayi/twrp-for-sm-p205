@@ -1,0 +1,25 @@
+# P205 TWRP 12.1 Base-Tree Patches
+
+Apply these patches from the Android source root after syncing the TWRP 12.1
+manifest and cloning this device tree.
+
+```bash
+cd ~/twrp
+P205_TREE="$PWD/device/samsung/p205"
+
+git -C build/make apply "$P205_TREE/patches/0001-build-make-p205-recovery-props.patch"
+git -C system/sepolicy apply "$P205_TREE/patches/0002-system-sepolicy-drop-deprecated-board-plat-policy.patch"
+git -C bootable/recovery apply "$P205_TREE/patches/0003-bootable-recovery-p205-twrp12-support.patch"
+```
+
+Patch summary:
+
+- `0001-build-make-p205-recovery-props.patch`: keeps recovery USB properties
+  deterministic and allows `device/samsung/p205/ramdisk.prop` to feed the
+  recovery ramdisk.
+- `0002-system-sepolicy-drop-deprecated-board-plat-policy.patch`: removes legacy
+  `BOARD_PLAT_*_SEPOLICY_DIR` compatibility reads that produce Android 12.1
+  sepolicy warnings in this tree.
+- `0003-bootable-recovery-p205-twrp12-support.patch`: adds the P205 recovery
+  runtime changes for Samsung configfs USB handling, selected language resource
+  copying, and sdfat/exfat handling.
