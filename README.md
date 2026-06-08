@@ -135,11 +135,16 @@ mka recoveryimage
 To flash with Odin, pack `recovery.img` into a tar archive:
 
 ```bash
-cd ~/twrp/out/target/product/p205
+cd /path/to/twrp-12.1/out/target/product/p205
 tar -H ustar -c recovery.img > twrp_p205_12.1.tar
 ```
 
 Flash `twrp_p205_12.1.tar` with Odin's AP slot.
+
+In Odin, disable `Auto Reboot` before flashing. After Odin reports `PASS`, do
+not let the tablet boot Android first. Hold `Power + Volume Down` to leave
+Download Mode; as soon as the screen turns off, switch to `Power + Volume Up`
+and keep holding until recovery starts.
 
 ## Known Build Notes
 

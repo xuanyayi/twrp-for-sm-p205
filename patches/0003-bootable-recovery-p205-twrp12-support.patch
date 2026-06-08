@@ -1,8 +1,18 @@
 diff --git a/Android.mk b/Android.mk
-index 383adca..e6d981d 100644
+index 383adca..fe8e0fe 100644
 --- a/Android.mk
 +++ b/Android.mk
-@@ -314,6 +314,9 @@ endif
+@@ -236,6 +236,9 @@ endif
+ ifeq ($(TW_EXCLUDE_MTP),)
+     LOCAL_CFLAGS += -DTW_HAS_MTP
+ endif
++ifeq ($(TW_KEEP_MTP_ON_SIDELOAD), true)
++    LOCAL_CFLAGS += -DTW_KEEP_MTP_ON_SIDELOAD
++endif
+ ifneq ($(TW_NO_SCREEN_TIMEOUT),)
+     LOCAL_CFLAGS += -DTW_NO_SCREEN_TIMEOUT
+ endif
+@@ -314,6 +317,9 @@ endif
  ifeq ($(TW_NO_EXFAT_FUSE), true)
      LOCAL_CFLAGS += -DTW_NO_EXFAT_FUSE
  endif
@@ -11,6 +21,51 @@ index 383adca..e6d981d 100644
 +endif
  ifeq ($(TW_NO_HAPTICS), true)
      LOCAL_CFLAGS += -DTW_NO_HAPTICS
+ endif
+@@ -473,7 +479,6 @@ TWRP_REQUIRED_MODULES += \
+     relink_binaries \
+     relink_vendor_hw_binaries \
+     twrp_ramdisk \
+-    bc \
+     dump_image \
+     erase_image \
+     flash_image \
+@@ -499,8 +504,6 @@ TWRP_REQUIRED_MODULES += \
+     minadbd \
+     twrpbu \
+     adbd_system_api_recovery \
+-    me.twrp.twrpapp.apk \
+-    privapp-permissions-twrpapp.xml \
+     adbd_system_api_recovery \
+     libsync.recovery \
+     libandroidicu.recovery \
+@@ -512,6 +515,16 @@ TWRP_REQUIRED_MODULES += \
+     android.hardware.health@2.0-impl.recovery \
+     android.hardware.health@2.0-service.rc
+ 
++ifneq ($(TW_EXCLUDE_BC), true)
++TWRP_REQUIRED_MODULES += bc
++endif
++
++ifneq ($(TW_EXCLUDE_TWRPAPP), true)
++TWRP_REQUIRED_MODULES += \
++    me.twrp.twrpapp.apk \
++    privapp-permissions-twrpapp.xml
++endif
++
+ ifneq ($(TW_EXCLUDE_TZDATA), true)
+ TWRP_REQUIRED_MODULES += \
+     tzdata_twrp
+@@ -586,8 +599,10 @@ ifneq ($(TW_NO_EXFAT), true)
+     endif
+ endif
+ ifeq ($(BOARD_HAS_NO_REAL_SDCARD),)
++ifneq ($(TW_EXCLUDE_SGDISK), true)
+     TWRP_REQUIRED_MODULES += sgdisk
+ endif
++endif
+ ifneq ($(TW_EXCLUDE_ENCRYPTED_BACKUPS),)
+     TWRP_REQUIRED_MODULES += openaes openaes_license
  endif
 diff --git a/etc/init.rc b/etc/init.rc
 index 5c13ef7..984c60c 100644
@@ -107,6 +162,119 @@ index 5c13ef7..984c60c 100644
      write /config/usb_gadget/g1/idProduct 0x4EE0
      write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "fastboot"
      symlink /config/usb_gadget/g1/functions/ffs.fastboot /config/usb_gadget/g1/configs/b.1/f1
+diff --git a/gui/action.cpp b/gui/action.cpp
+index 0d09400..15c9e2e 100755
+--- a/gui/action.cpp
++++ b/gui/action.cpp
+@@ -26,16 +26,18 @@
+ #include <sys/mman.h>
+ #include <sys/types.h>
+ #include <sys/ioctl.h>
++#include <sys/wait.h>
+ #include <linux/input.h>
+ #include <time.h>
+ #include <unistd.h>
+ #include <stdlib.h>
+-#include <sys/wait.h>
+ #include <dirent.h>
++#include <errno.h>
+ #include <private/android_filesystem_config.h>
+ #include <android-base/properties.h>
+ #include <fstream>
+ 
++#include <chrono>
+ #include <string>
+ #include <sstream>
+ #include "../partitions.hpp"
+@@ -72,6 +74,19 @@ extern GUITerminal* term;
+ 
+ static void *ActionThread_work_wrapper(void *data);
+ 
++static void RestoreAdbUsbConfigAfterSideload()
++{
++	android::base::SetProperty("sys.usb.ffs.ready", "0");
++	android::base::SetProperty("sys.usb.config", "adb_reset");
++	if (!android::base::WaitForProperty("sys.usb.state", "adb_reset", std::chrono::seconds(10))) {
++		LOGERR("Timed out waiting for USB state adb_reset after sideload.\n");
++	}
++	android::base::SetProperty("sys.usb.config", "adb");
++	if (!android::base::WaitForProperty("sys.usb.state", "adb", std::chrono::seconds(10))) {
++		LOGERR("Timed out waiting for USB state adb after sideload.\n");
++	}
++}
++
+ class ActionThread
+ {
+ public:
+@@ -1574,7 +1589,14 @@ int GUIAction::adbsideload(std::string arg __unused)
+ 		operation_end(0);
+ 	} else {
+ 		gui_msg("start_sideload=Starting ADB sideload feature...");
++#ifdef TW_KEEP_MTP_ON_SIDELOAD
++		bool mtp_was_enabled = DataManager::GetIntValue("tw_mtp_enabled");
++		if (!mtp_was_enabled) {
++			PartitionManager.Enable_MTP();
++		}
++#else
+ 		bool mtp_was_enabled = TWFunc::Toggle_MTP(false);
++#endif
+ 
+ 		// wait for the adb connection
+ 		Device::BuiltinAction reboot_action = Device::REBOOT_BOOTLOADER;
+@@ -1595,7 +1617,13 @@ int GUIAction::adbsideload(std::string arg __unused)
+ 			if (wipe_dalvik)
+ 				PartitionManager.Wipe_Dalvik_Cache();
+ 		}
++#ifdef TW_KEEP_MTP_ON_SIDELOAD
++		if (!mtp_was_enabled) {
++			PartitionManager.Disable_MTP();
++		}
++#else
+ 		TWFunc::Toggle_MTP(mtp_was_enabled);
++#endif
+ 		reinject_after_flash();
+ 		operation_end(ret);
+ 	}
+@@ -1614,15 +1642,35 @@ int GUIAction::adbsideloadcancel(std::string arg __unused)
+ 	sideload_child_pid = GetMiniAdbdPid();
+ 	if (!sideload_child_pid) {
+ 		LOGERR("Unable to get child ID\n");
++		RestoreAdbUsbConfigAfterSideload();
++		DataManager::SetValue("tw_page_done", "1");
+ 		return 0;
+ 	}
+-	::sleep(1);
+ 	LOGINFO("Killing child sideload process.\n");
+ 	kill(sideload_child_pid, SIGTERM);
+-	int status;
+-	LOGINFO("Waiting for child sideload process to exit.\n");
+-	waitpid(sideload_child_pid, &status, 0);
++	int status = 0;
++	bool child_exited = false;
++	LOGINFO("Waiting briefly for child sideload process to exit.\n");
++	for (int i = 0; i < 50; ++i) {
++		pid_t wait_result = waitpid(sideload_child_pid, &status, WNOHANG);
++		if (wait_result == sideload_child_pid) {
++			child_exited = true;
++			break;
++		}
++		if (wait_result < 0) {
++			LOGERR("Error waiting for child sideload process: %s\n", strerror(errno));
++			child_exited = true;
++			break;
++		}
++		usleep(100000);
++	}
++	if (!child_exited && kill(sideload_child_pid, 0) == 0) {
++		LOGERR("Child sideload process did not exit after SIGTERM, sending SIGKILL.\n");
++		kill(sideload_child_pid, SIGKILL);
++		waitpid(sideload_child_pid, &status, 0);
++	}
+ 	sideload_child_pid = 0;
++	RestoreAdbUsbConfigAfterSideload();
+ 	DataManager::SetValue("tw_page_done", "1"); // For OpenRecoveryScript support
+ 	return 0;
+ }
 diff --git a/gui/libguitwrp_defaults.go b/gui/libguitwrp_defaults.go
 index b1e114e..4f9ed1b 100644
 --- a/gui/libguitwrp_defaults.go
@@ -170,6 +338,228 @@ index b1e114e..4f9ed1b 100644
  	for idx, file := range files {
  		_ = idx
  		fileToCopy := recoveryDir + file
+diff --git a/gui/theme/common/portrait.xml b/gui/theme/common/portrait.xml
+index 8b5324b..6447ca4 100755
+--- a/gui/theme/common/portrait.xml
++++ b/gui/theme/common/portrait.xml
+@@ -181,7 +181,7 @@
+ 					<action function="page">clear_vars</action>
+ 				</actions>
+ 			</action>
+-		</page>
++			</page>
+ 
+ 		<page name="main2">
+ 			<template name="page"/>
+@@ -248,7 +248,7 @@
+ 				<text>{@reboot_btn=Reboot}</text>
+ 				<action function="page">reboot</action>
+ 			</button>
+-		</page>
++			</page>
+ 
+ 		<page name="install">
+ 			<template name="page"/>
+@@ -353,7 +353,7 @@
+ 				<touch key="home"/>
+ 				<action function="page">main</action>
+ 			</action>
+-		</page>
++			</page>
+ 
+ 		<page name="flash_confirm">
+ 			<template name="page"/>
+@@ -461,7 +461,7 @@
+ 				<touch key="home"/>
+ 				<action function="page">main</action>
+ 			</action>
+-		</page>
++			</page>
+ 
+ 		<page name="flash_zip">
+ 			<template name="page"/>
+@@ -5288,11 +5288,7 @@
+ 				</actions>
+ 			</action>
+ 
+-			<action>
+-				<touch key="power+voldown" />
+-				<action function="screenshot" />
+-			</action>
+-		</page>
++			</page>
+ 
+ 		<page name="fastboot">
+ 			<template name="page"/>
+@@ -5458,11 +5454,7 @@
+ 				<action function="togglebacklight"/>
+ 			</action>
+ 
+-			<action>
+-				<touch key="power+voldown"/>
+-				<action function="screenshot"/>
+-			</action>
+-		</page>
++			</page>
+ 
+ 		<page name="select_storage">
+ 			<fill color="%semi_transparent%">
+@@ -5541,11 +5533,7 @@
+ 				</actions>
+ 			</button>
+ 
+-			<action>
+-				<touch key="power+voldown"/>
+-				<action function="screenshot"/>
+-			</action>
+-		</page>
++			</page>
+ 
+ 		<page name="select_language">
+ 			<fill color="%semi_transparent%">
+@@ -5624,11 +5612,7 @@
+ 				</actions>
+ 			</button>
+ 
+-			<action>
+-				<touch key="power+voldown"/>
+-				<action function="screenshot"/>
+-			</action>
+-		</page>
++			</page>
+ 
+ 		<page name="decrypt_users">
+ 			<template name="page"/>
+diff --git a/gui/theme/portrait_hdpi/ui.xml b/gui/theme/portrait_hdpi/ui.xml
+index 104c3f6..37e81bf 100755
+--- a/gui/theme/portrait_hdpi/ui.xml
++++ b/gui/theme/portrait_hdpi/ui.xml
+@@ -402,10 +402,6 @@
+ 				<action function="togglebacklight"/>
+ 			</action>
+ 
+-			<action>
+-				<touch key="power+voldown"/>
+-				<action function="screenshot"/>
+-			</action>
+ 		</template>
+ 
+ 		<template name="progress_bar">
+diff --git a/libtar/append.c b/libtar/append.c
+index 225ae1a..66cd5f9 100755
+--- a/libtar/append.c
++++ b/libtar/append.c
+@@ -473,4 +473,3 @@ tar_append_buffer(TAR *t, void *buf, size_t len)
+ 
+ 	return 0;
+ }
+-
+diff --git a/libtar/block.c b/libtar/block.c
+index aaedc8e..7f502c2 100755
+--- a/libtar/block.c
++++ b/libtar/block.c
+@@ -723,5 +723,3 @@ th_write(TAR *t)
+ #endif
+ 	return 0;
+ }
+-
+-
+diff --git a/libtar/output.c b/libtar/output.c
+index 3f57c83..ecc6254 100755
+--- a/libtar/output.c
++++ b/libtar/output.c
+@@ -138,5 +138,3 @@ th_print_long_ls(TAR *t)
+ 
+ 	putchar('\n');
+ }
+-
+-
+diff --git a/openrecoveryscript.cpp b/openrecoveryscript.cpp
+index c2ff0fe..043a897 100755
+--- a/openrecoveryscript.cpp
++++ b/openrecoveryscript.cpp
+@@ -19,6 +19,7 @@
+ #define __STDC_FORMAT_MACROS 1
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <signal.h>
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/vfs.h>
+@@ -36,6 +37,7 @@
+ #include <algorithm>
+ #include <sys/types.h>
+ #include <sys/wait.h>
++#include <chrono>
+ #include <zlib.h>
+ 
+ #include "twrp-functions.hpp"
+@@ -61,6 +63,36 @@ OpenRecoveryScript::VoidFunction OpenRecoveryScript::call_after_cli_command;
+ 
+ #define SCRIPT_COMMAND_SIZE 512
+ 
++static void ClearSideloadRecoveryCommands() {
++	unlink(SCRIPT_FILE_TMP);
++	unlink("/cache/recovery/openrecoveryscript");
++	unlink("/cache/recovery/command");
++	unlink("/data/cache/recovery/openrecoveryscript");
++	unlink("/data/cache/recovery/command");
++}
++
++static void WaitForSideloadChildExit(pid_t sideload_child_pid) {
++	if (sideload_child_pid <= 0)
++		return;
++
++	int status;
++	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
++	while (std::chrono::steady_clock::now() < deadline) {
++		pid_t wait_result = waitpid(sideload_child_pid, &status, WNOHANG);
++		if (wait_result == sideload_child_pid || (wait_result < 0 && errno == ECHILD))
++			return;
++		if (wait_result < 0) {
++			LOGERR("Error waiting for child sideload process: %s\n", strerror(errno));
++			return;
++		}
++		usleep(100000);
++	}
++
++	LOGERR("Child sideload process did not exit, sending SIGKILL.\n");
++	kill(sideload_child_pid, SIGKILL);
++	waitpid(sideload_child_pid, &status, WNOHANG);
++}
++
+ int OpenRecoveryScript::check_for_script_file(void) {
+ 	std::string logDir = TWFunc::get_log_dir();
+ 	std::string orsFile;
+@@ -400,6 +432,7 @@ int OpenRecoveryScript::run_script_file(void) {
+ 				PartitionManager.Unlock_Block_Partitions();
+ 				PartitionManager.Update_System_Details();
+ 				sideload = 1; // Causes device to go to the home screen afterwards
++				ClearSideloadRecoveryCommands();
+ 				pid_t sideload_child_pid = GetMiniAdbdPid();
+ 				if (sideload_child_pid != 0) {
+ 					LOGINFO("Signaling child sideload process to exit.\n");
+@@ -407,9 +440,8 @@ int OpenRecoveryScript::run_script_file(void) {
+ 					// Calling stat() on this magic filename signals the minadbd
+ 					// subprocess to shut down.
+ 					stat(FUSE_SIDELOAD_HOST_EXIT_PATHNAME, &st);
+-					int status;
+-					LOGINFO("Waiting for child sideload process to exit.\n");
+-					waitpid(sideload_child_pid, &status, 0);
++					LOGINFO("Waiting briefly for child sideload process to exit.\n");
++					WaitForSideloadChildExit(sideload_child_pid);
+ 				}
+ 				property_set("ctl.start", "adbd");
+ 				gui_msg("done=Done.");
+@@ -664,7 +696,7 @@ int OpenRecoveryScript::Run_OpenRecoveryScript_Action() {
+ 			op_status = 0;
+ 		}
+ 	}
+-	if (reboot) {
++	if (reboot && op_status == 0) {
+ 		// Disable stock recovery reflashing
+ 		TWFunc::Disable_Stock_Recovery_Replace();
+ 		usleep(2000000); // Sleep for 2 seconds before rebooting
 diff --git a/partition.cpp b/partition.cpp
 index 184cb16..36717a1 100755
 --- a/partition.cpp
@@ -277,3 +667,335 @@ index 2766b4c..9f4c6e3 100755
  		usleep(2000);
  	}
  #ifdef TW_HAS_MTP
+diff --git a/prebuilt/Android.mk b/prebuilt/Android.mk
+index 3197ec1..27346b2 100755
+--- a/prebuilt/Android.mk
++++ b/prebuilt/Android.mk
+@@ -41,7 +41,9 @@ endif
+ ifneq ($(filter $(PRODUCT_USE_DYNAMIC_PARTITIONS) $(TW_INCLUDE_FASTBOOTD),true),)
+ RECOVERY_BINARY_SOURCE_FILES += $(TARGET_RECOVERY_ROOT_OUT)/system/bin/fastbootd
+ endif
++ifneq ($(TW_EXCLUDE_BC), true)
+ RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/bc
++endif
+ RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/e2fsck
+ RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/e2fsdroid
+ RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/mke2fs
+@@ -221,20 +223,20 @@ ifeq ($(TW_INCLUDE_CRYPTO), true)
+         RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/keystore2
+         RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/keystore_cli
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.system.wifi.keystore@1.0.so
+-        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator@1.0.so
+-        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator@1.1.so
+-        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator@1.2.so
+-        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V1-ndk_platform.so
+-        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V1-cpp.so
++        ifneq ($(TW_NO_HAPTICS), true)
++            RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator@1.0.so
++            RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator@1.1.so
++            RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator@1.2.so
++            RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V1-ndk_platform.so
++            RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V1-cpp.so
++        endif
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libstatslog.so
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libsoft_attestation_cert.so
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libdiskconfig.so
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libhardware_legacy.so
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libincfs.so
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.health.storage@1.0.so
+-        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.health.storage@1.0.so
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.health.storage-V1-ndk_platform.so
+-        RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libhardware_legacy.so
+         RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.system.suspend@1.0.so
+         RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/fscryptpolicyget
+         ifneq ($(TW_EXCLUDE_LIBXML2), true)
+@@ -274,10 +276,12 @@ ifeq ($(TW_INCLUDE_CRYPTO), true)
+     endif
+ endif
+ ifneq ($(filter $(TW_INCLUDE_CRYPTO) $(TW_SUPPORT_INPUT_AIDL_HAPTICS), true),)
++ifneq ($(TW_NO_HAPTICS), true)
+     RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V2-cpp.so
+     RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V2-ndk.so
+     RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V2-ndk_platform.so
+ endif
++endif
+ ifeq ($(AB_OTA_UPDATER), true)
+     RECOVERY_BINARY_SOURCE_FILES += $(TARGET_RECOVERY_ROOT_OUT)/system/bin/update_engine_sideload
+     RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_VENDOR_EXECUTABLES)/hw/android.hardware.boot@1.0-service
+@@ -349,8 +353,10 @@ else
+     RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/mkntfs
+ endif
+ ifeq ($(BOARD_HAS_NO_REAL_SDCARD),)
++ifneq ($(TW_EXCLUDE_SGDISK), true)
+     RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/sgdisk
+ endif
++endif
+ ifneq ($(TW_OZIP_DECRYPT_KEY),)
+     RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/ozip_decrypt
+ endif
+@@ -379,6 +385,7 @@ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hidl.tok
+ ifneq ($(wildcard system/core/libkeyutils/Android.bp),)
+ 	RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libkeyutils.so
+ endif
++ifneq ($(TW_EXCLUDE_UBSAN_RUNTIME), true)
+ ifeq ($(TARGET_ARCH), arm64)
+ 	RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libclang_rt.ubsan_standalone-aarch64-android.so
+ endif
+@@ -397,6 +404,7 @@ endif
+ ifeq ($(TARGET_ARCH), mips64)
+ 	RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libclang_rt.ubsan_standalone-mips64-android.so
+ endif
++endif
+ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/liblogwrap.so
+ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libext2_misc.so
+ 
+@@ -507,6 +515,7 @@ ifeq ($(TW_USE_TOOLBOX), true)
+ endif
+ 
+ #TWRP App "placeholder"
++ifneq ($(TW_EXCLUDE_TWRPAPP), true)
+ include $(CLEAR_VARS)
+ LOCAL_MODULE := me.twrp.twrpapp.apk
+ LOCAL_MODULE_TAGS := optional
+@@ -514,8 +523,10 @@ LOCAL_MODULE_CLASS := EXECUTABLES
+ LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
+ LOCAL_SRC_FILES := $(LOCAL_MODULE)
+ include $(BUILD_PREBUILT)
++endif
+ 
+ #TWRP App permissions for Android 9+
++ifneq ($(TW_EXCLUDE_TWRPAPP), true)
+ include $(CLEAR_VARS)
+ LOCAL_MODULE := privapp-permissions-twrpapp.xml
+ LOCAL_MODULE_TAGS := optional
+@@ -523,6 +534,7 @@ LOCAL_MODULE_CLASS := EXECUTABLES
+ LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
+ LOCAL_SRC_FILES := $(LOCAL_MODULE)
+ include $(BUILD_PREBUILT)
++endif
+ 
+ ifneq (,$(filter $(TW_INCLUDE_REPACKTOOLS) $(TW_INCLUDE_RESETPROP) $(TW_INCLUDE_LIBRESETPROP), true))
+     ifeq ($(wildcard external/magisk-prebuilt/Android.mk),)
+diff --git a/twrpinstall/adb_install.cpp b/twrpinstall/adb_install.cpp
+index 5486b7e..d1afd45 100755
+--- a/twrpinstall/adb_install.cpp
++++ b/twrpinstall/adb_install.cpp
+@@ -29,8 +29,10 @@
+ #include <unistd.h>
+ 
+ #include <atomic>
++#include <chrono>
+ #include <functional>
+ #include <map>
++#include <thread>
+ #include <utility>
+ #include <vector>
+ 
+@@ -56,14 +58,100 @@
+ using CommandFunction = std::function<std::pair<bool, bool>()>;
+ 
+ pid_t child;
++static std::atomic<bool> sideload_command_finished(false);
+ 
+ pid_t GetMiniAdbdPid() {
+   return child;
+ }
+ 
+ static bool SetUsbConfig(const std::string& state) {
+-  android::base::SetProperty("sys.usb.config", state);
+-  return android::base::WaitForProperty("sys.usb.state", state);
++  static constexpr auto kUsbStateTimeout = std::chrono::seconds(10);
++  LOG(INFO) << "Setting USB config to " << state;
++  if (!android::base::SetProperty("sys.usb.config", state)) {
++    LOG(ERROR) << "Failed to set sys.usb.config to " << state;
++    return false;
++  }
++  if (android::base::WaitForProperty("sys.usb.state", state, kUsbStateTimeout)) {
++    return true;
++  }
++
++  LOG(ERROR) << "Timed out waiting for sys.usb.state=" << state
++             << " current config=" << android::base::GetProperty("sys.usb.config", "")
++             << " state=" << android::base::GetProperty("sys.usb.state", "")
++             << " ffs.ready=" << android::base::GetProperty("sys.usb.ffs.ready", "");
++  return false;
++}
++
++static void ClearSideloadRecoveryCommands() {
++  unlink("/tmp/openrecoveryscript");
++  unlink("/cache/recovery/openrecoveryscript");
++  unlink("/cache/recovery/command");
++  unlink("/data/cache/recovery/openrecoveryscript");
++  unlink("/data/cache/recovery/command");
++}
++
++static void WaitForAdbdStoppedBeforeSideload() {
++  if (!android::base::WaitForProperty("init.svc.adbd", "stopped", std::chrono::seconds(3))) {
++    LOG(ERROR) << "Timed out waiting for normal adbd to stop before sideload, current state="
++               << android::base::GetProperty("init.svc.adbd", "");
++  }
++}
++
++static void RestoreUsbConfigAfterSideload(const std::string& old_state) {
++  std::string restore_state = "adb";
++
++  android::base::SetProperty("sys.usb.ffs.ready", "0");
++  if (!SetUsbConfig("adb_reset")) {
++    LOG(ERROR) << "Failed to reset USB config after sideload";
++  }
++  if (!SetUsbConfig(restore_state)) {
++    LOG(ERROR) << "Failed to restore USB config to " << restore_state;
++    if (old_state != "adb" && !SetUsbConfig("adb")) {
++      LOG(ERROR) << "Failed to restore fallback USB config adb after sideload";
++    }
++  }
++}
++
++static bool WaitForMinadbdExit(pid_t pid, int* status, bool* status_unavailable,
++                               std::chrono::milliseconds timeout) {
++  static constexpr useconds_t kPollIntervalUs = 100000;
++  const auto deadline = std::chrono::steady_clock::now() + timeout;
++  *status_unavailable = false;
++
++  while (true) {
++    pid_t wait_result = waitpid(pid, status, WNOHANG);
++    if (wait_result == pid) {
++      return true;
++    }
++    if (wait_result < 0) {
++      if (errno == ECHILD) {
++        LOG(INFO) << "minadbd pid " << pid << " was already reaped";
++      } else {
++        PLOG(ERROR) << "Failed to wait for minadbd pid " << pid;
++      }
++      *status_unavailable = true;
++      return true;
++    }
++    if (std::chrono::steady_clock::now() >= deadline) {
++      return false;
++    }
++    usleep(kPollIntervalUs);
++  }
++}
++
++static void StopMinadbd(pid_t pid) {
++  if (pid <= 0) {
++    return;
++  }
++
++  int status = 0;
++  bool status_unavailable = false;
++  kill(pid, SIGTERM);
++  if (!WaitForMinadbdExit(pid, &status, &status_unavailable, std::chrono::seconds(5))) {
++    LOG(ERROR) << "minadbd pid " << pid << " did not exit after SIGTERM, sending SIGKILL";
++    kill(pid, SIGKILL);
++    WaitForMinadbdExit(pid, &status, &status_unavailable, std::chrono::seconds(2));
++  }
+ }
+ 
+ // Parses the minadbd command in |message|; returns MinadbdCommand::kError upon errors.
+@@ -125,6 +213,7 @@ static auto AdbInstallPackageHandler(int* result) {
+   // Calling stat() on this magic filename signals the FUSE to exit.
+   struct stat st;
+   stat(FUSE_SIDELOAD_HOST_EXIT_PATHNAME, &st);
++  sideload_command_finished.store(true);
+   return std::make_pair(*result == INSTALL_SUCCESS, should_continue);
+ }
+ 
+@@ -231,10 +320,16 @@ static void ListenAndExecuteMinadbdCommands(
+     for (int n = 0; n < event_count; n++) {
+       if (events[n].events & EPOLLHUP) {
+         LOG(INFO) << "Socket has been closed";
++        if (sideload_command_finished.load()) {
++          return;
++        }
+         kill(minadbd_pid, SIGKILL);
+         return;
+       }
+       if (!HandleMessageFromMinadbd(socket_fd.get(), command_map)) {
++        if (sideload_command_finished.load()) {
++          return;
++        }
+         kill(minadbd_pid, SIGKILL);
+         return;
+       }
+@@ -308,11 +403,15 @@ static void CreateMinadbdServiceAndExecuteCommands(
+   }
+ 
+   minadbd_socket.reset();
++  sideload_command_finished.store(false);
+ 
+   // We need to call SetUsbConfig() after forking minadbd service. Because the function waits for
+   // the usb state to be updated, which depends on sys.usb.ffs.ready=1 set in the adb daemon.
+   if (!SetUsbConfig("sideload")) {
+     LOG(ERROR) << "Failed to set usb config to sideload";
++    StopMinadbd(child);
++    child = 0;
++    signal(SIGPIPE, SIG_DFL);
+     return;
+   }
+ 
+@@ -322,16 +421,24 @@ static void CreateMinadbdServiceAndExecuteCommands(
+     listener_thread.join();
+   }
+ 
+-  int status;
+-  waitpid(child, &status, 0);
+-  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
++  int status = 0;
++  bool status_unavailable = false;
++  if (!WaitForMinadbdExit(child, &status, &status_unavailable, std::chrono::seconds(5))) {
++    LOG(ERROR) << "Timed out waiting for minadbd to exit, sending SIGKILL";
++    kill(child, SIGKILL);
++    WaitForMinadbdExit(child, &status, &status_unavailable, std::chrono::seconds(2));
++  }
++  if (!status_unavailable && WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+     if (WEXITSTATUS(status) == MinadbdErrorCode::kMinadbdAdbVersionError) {
+       LOG(ERROR) << "\nYou need adb 1.0.32 or newer to sideload\nto this device.\n";
+-    } else if (!WIFSIGNALED(status)) {
++    } else {
+       LOG(ERROR) << "\n(adbd status " << WEXITSTATUS(status) << ")";
+     }
++  } else if (!status_unavailable && WIFSIGNALED(status)) {
++    LOG(ERROR) << "\n(adbd killed by signal " << WTERMSIG(status) << ")";
+   }
+ 
++  child = 0;
+   signal(SIGPIPE, SIG_DFL);
+ }
+ 
+@@ -339,11 +446,10 @@ static void CreateMinadbdServiceAndExecuteCommands(
+ 
+   // Save the usb state to restore after the sideload operation.
+   std::string usb_state = android::base::GetProperty("sys.usb.state", "none");
+-  // Clean up state and stop adbd.
+-  if (usb_state != "none" && !SetUsbConfig("none")) {
+-    LOG(ERROR) << "Failed to clear USB config";
+-    return INSTALL_ERROR;
++  if (!SetUsbConfig("sideload_prepare")) {
++    LOG(ERROR) << "Failed to prepare USB config before sideload";
+   }
++  WaitForAdbdStoppedBeforeSideload();
+ 
+   int install_result = INSTALL_ERROR;
+   std::map<MinadbdCommand, CommandFunction> command_map{
+@@ -363,17 +469,7 @@ static void CreateMinadbdServiceAndExecuteCommands(
+ 
+   CreateMinadbdServiceAndExecuteCommands(command_map, false, install_file);
+ 
+-  // Clean up before switching to the older state, for example setting the state
+-  // to none sets sys/class/android_usb/android0/enable to 0.
+-  if (!SetUsbConfig("none")) {
+-    LOG(ERROR) << "Failed to clear USB config";
+-  }
+-
+-  if (usb_state != "none") {
+-    if (!SetUsbConfig(usb_state)) {
+-      LOG(ERROR) << "Failed to set USB config to " << usb_state;
+-    }
+-  }
+-
++  ClearSideloadRecoveryCommands();
++  RestoreUsbConfigAfterSideload(usb_state);
+   return install_result;
+ }

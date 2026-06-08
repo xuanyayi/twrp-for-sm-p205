@@ -57,7 +57,7 @@ BOARD_PREBUILT_DTBOIMAGE := $(DEVICE_PATH)/prebuilt/recovery_dtbo
 TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/Image
 
 # mkbootimg arguments
-BOARD_MKBOOTIMG_ARGS := --kernel_offset 0x00008000 --ramdisk_offset 0x01000000 --tags_offset 0x00000100 --header_version 1 --board SRPSA16A009RU
+BOARD_MKBOOTIMG_ARGS := --kernel_offset 0x00008000 --ramdisk_offset 0x01000000 --second_offset 0x00f00000 --set_empty_second_addr --tags_offset 0x00000100 --header_version 1 --board SRPSA16A009RU
 
 # Platform
 BOARD_VENDOR := samsung
@@ -105,11 +105,17 @@ TW_USE_TOOLBOX := true
 TW_NO_REBOOT_BOOTLOADER := true
 TW_HAS_DOWNLOAD_MODE := true
 TW_EXCLUDE_TWRPAPP := true
-TW_DEFAULT_LANGUAGE := zh_CN
-TW_LANGUAGES := en zh_CN
+TW_EXCLUDE_BC := true
+TW_DEFAULT_LANGUAGE := en
+TW_LANGUAGES := en
+TW_EXTRA_LANGUAGES := false
 TW_USE_NEW_MINADBD := true
 TW_EXCLUDE_DEFAULT_USB_INIT := true
 TW_DEDUP_RECOVERY_USB_CONFIG := true
+TW_KEEP_MTP_ON_SIDELOAD := true
+TW_EXCLUDE_SGDISK := true
+TW_EXCLUDE_UBSAN_RUNTIME := true
+TW_NO_HAPTICS := true
 
 # First-stage image size trim: keep boot, touch, ADB, and basic partitions
 # inside the stock 38 MiB recovery partition before re-enabling extras.
