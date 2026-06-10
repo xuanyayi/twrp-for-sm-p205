@@ -17,7 +17,7 @@
 DEVICE_PATH := device/samsung/p205
 
 # OTA Assert
-TARGET_OTA_ASSERT_DEVICE := wisdom,wisdomx
+TARGET_OTA_ASSERT_DEVICE := wisdom
 
 # Architecture
 TARGET_ARCH := arm64

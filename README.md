@@ -3,8 +3,11 @@
 ![Galaxy Tab A8](https://fdn2.gsmarena.com/vv/pics/samsung/samsung-galaxy-tab-a-s-pen-sm-p205-2.jpg "Galaxy Tab A8")
 
 This device tree builds TWRP 12.1 for the Samsung Galaxy Tab A 8.0 with S Pen
-LTE (`SM-P205`). Samsung codenames for this device family are `wisdom` and
-`wisdomx`.
+LTE (`SM-P205`). The Samsung codename for this device is `wisdom`.
+
+This tree is based on the upstream SM-P205 TWRP device tree from
+`topser9/twrp_device_samsung_p205`, with TWRP 12.1-specific build and recovery
+fixes maintained here.
 
 ## Build Environment
 
@@ -219,7 +222,7 @@ Then run `lunch twrp_p205-eng` again before building.
 
 - Device: Samsung Galaxy Tab A 8.0 with S Pen LTE
 - Model: `SM-P205`
-- Samsung codename: `wisdom` / `wisdomx`
+- Samsung codename: `wisdom`
 - Platform: Exynos 7904 / universal7904
 - Device tree path: `device/samsung/p205`
 - Recovery variant: TWRP 12.1
