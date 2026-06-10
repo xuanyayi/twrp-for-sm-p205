@@ -115,7 +115,6 @@ TW_DEDUP_RECOVERY_USB_CONFIG := true
 TW_KEEP_MTP_ON_SIDELOAD := true
 TW_EXCLUDE_SGDISK := true
 TW_EXCLUDE_UBSAN_RUNTIME := true
-TW_NO_HAPTICS := true
 
 # First-stage image size trim: keep boot, touch, ADB, and basic partitions
 # inside the stock 38 MiB recovery partition before re-enabling extras.

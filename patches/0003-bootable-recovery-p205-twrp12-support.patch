@@ -67,6 +67,23 @@ index 383adca..fe8e0fe 100644
  ifneq ($(TW_EXCLUDE_ENCRYPTED_BACKUPS),)
      TWRP_REQUIRED_MODULES += openaes openaes_license
  endif
+diff --git a/data.cpp b/data.cpp
+index 59f71d0..bf1f0e8 100644
+--- a/data.cpp
++++ b/data.cpp
+@@ -582,9 +582,9 @@ void DataManager::SetDefaultValues()
+ 	mConst.SetValue(TW_VERSION_VAR, TW_VERSION_STR);
+ 
+ #ifndef TW_NO_HAPTICS
+-	mPersist.SetValue("tw_button_vibrate", "80");
+-	mPersist.SetValue("tw_keyboard_vibrate", "40");
+-	mPersist.SetValue("tw_action_vibrate", "160");
++	mPersist.SetValue("tw_button_vibrate", "0");
++	mPersist.SetValue("tw_keyboard_vibrate", "0");
++	mPersist.SetValue("tw_action_vibrate", "0");
+ 	mConst.SetValue("tw_disable_haptics", "0");
+ #else
+ 	LOGINFO("TW_NO_HAPTICS := true\n");
 diff --git a/etc/init.rc b/etc/init.rc
 index 5c13ef7..984c60c 100644
 --- a/etc/init.rc
