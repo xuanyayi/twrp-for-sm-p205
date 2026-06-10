@@ -88,6 +88,8 @@ P205_TREE="$PWD/device/samsung/p205"
 git -C build/make apply "$P205_TREE/patches/0001-build-make-p205-recovery-props.patch"
 git -C system/sepolicy apply "$P205_TREE/patches/0002-system-sepolicy-drop-deprecated-board-plat-policy.patch"
 git -C bootable/recovery apply "$P205_TREE/patches/0003-bootable-recovery-p205-twrp12-support.patch"
+git -C system/tools/mkbootimg apply "$P205_TREE/patches/0004-mkbootimg-preserve-empty-second-address.patch"
+git -C vendor/twrp apply "$P205_TREE/patches/0005-vendor-twrp-export-p205-soong-vars.patch"
 ```
 
 If you want to verify first without changing files:
@@ -99,6 +101,8 @@ P205_TREE="$PWD/device/samsung/p205"
 git -C build/make apply --check "$P205_TREE/patches/0001-build-make-p205-recovery-props.patch"
 git -C system/sepolicy apply --check "$P205_TREE/patches/0002-system-sepolicy-drop-deprecated-board-plat-policy.patch"
 git -C bootable/recovery apply --check "$P205_TREE/patches/0003-bootable-recovery-p205-twrp12-support.patch"
+git -C system/tools/mkbootimg apply --check "$P205_TREE/patches/0004-mkbootimg-preserve-empty-second-address.patch"
+git -C vendor/twrp apply --check "$P205_TREE/patches/0005-vendor-twrp-export-p205-soong-vars.patch"
 ```
 
 If a patch reports that it is already applied, skip that patch.
@@ -108,6 +112,10 @@ If a patch reports that it is already applied, skip that patch.
 ```bash
 cd ~/twrp
 export ALLOW_MISSING_DEPENDENCIES=true
+export BUILD_DATETIME=1781100000
+export BUILD_NUMBER=p205-repro-20260610
+export BUILD_USERNAME=p205
+export BUILD_HOSTNAME=repro
 source build/envsetup.sh
 lunch twrp_p205-eng
 mka recoveryimage
@@ -123,11 +131,13 @@ For a clean rebuild:
 
 ```bash
 cd ~/twrp
-rm -rf out/target/product/p205/recovery \
-       out/target/product/p205/ramdisk-recovery.img \
-       out/target/product/p205/recovery.img
+rm -rf out/target/product/p205 out/soong/build_number.txt
 
 export ALLOW_MISSING_DEPENDENCIES=true
+export BUILD_DATETIME=1781100000
+export BUILD_NUMBER=p205-repro-20260610
+export BUILD_USERNAME=p205
+export BUILD_HOSTNAME=repro
 source build/envsetup.sh
 lunch twrp_p205-eng
 mka recoveryimage
@@ -139,10 +149,15 @@ To flash with Odin, pack `recovery.img` into a tar archive:
 
 ```bash
 cd /path/to/twrp-12.1/out/target/product/p205
-tar -H ustar -c recovery.img > twrp_p205_12.1.tar
+tar --sort=name \
+  --mtime='@1781100000' \
+  --owner=0 --group=0 --numeric-owner \
+  -H ustar \
+  -cf twrp-3.7.1_12-0-p205-repro-20260610.tar \
+  recovery.img
 ```
 
-Flash `twrp_p205_12.1.tar` with Odin's AP slot.
+Flash `twrp-3.7.1_12-0-p205-repro-20260610.tar` with Odin's AP slot.
 
 In Odin, disable `Auto Reboot` before flashing. After Odin reports `PASS`, do
 not let the tablet boot Android first. Hold `Power + Volume Down` to leave
@@ -158,6 +173,9 @@ and keep holding until recovery starts.
 - Recovery DTBO: `prebuilt/recovery_dtbo`
 - Recovery partition size: `39845888` bytes
 - `ALLOW_MISSING_DEPENDENCIES=true` is expected for this minimal recovery tree.
+- Reproducible release builds use `BUILD_DATETIME=1781100000`,
+  `BUILD_NUMBER=p205-repro-20260610`, `BUILD_USERNAME=p205`, and
+  `BUILD_HOSTNAME=repro`.
 - Optional TWRP extras are trimmed to keep `recovery.img` inside the stock
   recovery partition size.
 

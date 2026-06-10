@@ -667,6 +667,19 @@ index 2766b4c..9f4c6e3 100755
  		usleep(2000);
  	}
  #ifdef TW_HAS_MTP
+diff --git a/pigz/Android.mk b/pigz/Android.mk
+index 2875fd1..b94cd76 100755
+--- a/pigz/Android.mk
++++ b/pigz/Android.mk
+@@ -14,8 +14,6 @@ LOCAL_SHARED_LIBRARIES += libz libc
+ 
+ LOCAL_POST_INSTALL_CMD := \
+     $(hide) mkdir -p $(TARGET_RECOVERY_ROOT_OUT)/system/bin && \
+-    ln -sf pigz $(TARGET_RECOVERY_ROOT_OUT)/system/bin/gunzip && \
+-    ln -sf pigz $(TARGET_RECOVERY_ROOT_OUT)/system/bin/gzip && \
+     ln -sf pigz $(TARGET_RECOVERY_ROOT_OUT)/system/bin/unpigz
+ 
+ include $(BUILD_EXECUTABLE)
 diff --git a/prebuilt/Android.mk b/prebuilt/Android.mk
 index 3197ec1..27346b2 100755
 --- a/prebuilt/Android.mk

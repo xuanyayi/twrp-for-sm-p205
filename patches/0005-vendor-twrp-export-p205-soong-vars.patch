@@ -1,0 +1,13 @@
+diff --git a/config/BoardConfigSoong.mk b/config/BoardConfigSoong.mk
+index 87cd458..ad745cf 100644
+--- a/config/BoardConfigSoong.mk
++++ b/config/BoardConfigSoong.mk
+@@ -16,6 +16,8 @@ EXPORT_TO_SOONG := \
+     TARGET_SCREEN_WIDTH \
+     TARGET_SCREEN_HEIGHT \
+     TARGET_RECOVERY_PIXEL_FORMAT \
++    TW_LANGUAGES \
++    TW_EXCLUDE_BACKUP_RESTORE \
+     TW_EXTRA_LANGUAGES \
+     TWRP_CUSTOM_KEYBOARD \
+     AB_OTA_UPDATER \
