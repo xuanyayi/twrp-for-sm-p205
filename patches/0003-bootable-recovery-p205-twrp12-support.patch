@@ -68,7 +68,7 @@ index 383adca..fe8e0fe 100644
      TWRP_REQUIRED_MODULES += openaes openaes_license
  endif
 diff --git a/data.cpp b/data.cpp
-index 59f71d0..bf1f0e8 100644
+index 0078524..5d566f9 100644
 --- a/data.cpp
 +++ b/data.cpp
 @@ -582,9 +582,9 @@ void DataManager::SetDefaultValues()
@@ -180,7 +180,7 @@ index 5c13ef7..984c60c 100644
      write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "fastboot"
      symlink /config/usb_gadget/g1/functions/ffs.fastboot /config/usb_gadget/g1/configs/b.1/f1
 diff --git a/gui/action.cpp b/gui/action.cpp
-index 0d09400..15c9e2e 100755
+index 0d09400..1dd43bb 100755
 --- a/gui/action.cpp
 +++ b/gui/action.cpp
 @@ -26,16 +26,18 @@
@@ -203,61 +203,76 @@ index 0d09400..15c9e2e 100755
  #include <string>
  #include <sstream>
  #include "../partitions.hpp"
-@@ -72,6 +74,19 @@ extern GUITerminal* term;
+@@ -47,6 +49,7 @@
+ 
+ #include "fuse_sideload.h"
+ #include "blanktimer.hpp"
++#include "pages.hpp"
+ #include "twinstall.h"
+ 
+ extern "C" {
+@@ -67,11 +70,34 @@ std::set<string> GUIAction::setActionsRunningInCallerThread;
+ static string zip_queue[10];
+ static int zip_queue_index;
+ pid_t sideload_child_pid;
++static bool sideload_restore_mtp = false;
+ extern std::vector<users_struct> Users_List;
+ extern GUITerminal* term;
  
  static void *ActionThread_work_wrapper(void *data);
  
 +static void RestoreAdbUsbConfigAfterSideload()
 +{
 +	android::base::SetProperty("sys.usb.ffs.ready", "0");
-+	android::base::SetProperty("sys.usb.config", "adb_reset");
-+	if (!android::base::WaitForProperty("sys.usb.state", "adb_reset", std::chrono::seconds(10))) {
-+		LOGERR("Timed out waiting for USB state adb_reset after sideload.\n");
++	android::base::SetProperty("sys.usb.config", "none");
++	if (!android::base::WaitForProperty("sys.usb.state", "none", std::chrono::seconds(10))) {
++		LOGERR("Timed out waiting for USB state none after sideload.\n");
 +	}
-+	android::base::SetProperty("sys.usb.config", "adb");
-+	if (!android::base::WaitForProperty("sys.usb.state", "adb", std::chrono::seconds(10))) {
-+		LOGERR("Timed out waiting for USB state adb after sideload.\n");
++	usleep(1000000);
++	const char* target_config = sideload_restore_mtp ? "mtp,adb" : "adb";
++	android::base::SetProperty("sys.usb.config", target_config);
++	if (!android::base::WaitForProperty("sys.usb.state", target_config, std::chrono::seconds(10))) {
++		LOGERR("Timed out waiting for USB state %s after sideload.\n", target_config);
 +	}
++}
++
++static void ExitSideloadToRecoveryPage() {
++	DataManager::SetValue("tw_has_cancel", 0);
++	DataManager::SetValue("tw_show_reboot", 0);
++	DataManager::SetValue("tw_clear_destination", "advanced");
++	PageManager::ChangePage("clear_vars");
 +}
 +
  class ActionThread
  {
  public:
-@@ -1574,7 +1589,14 @@ int GUIAction::adbsideload(std::string arg __unused)
+@@ -1574,7 +1600,11 @@ int GUIAction::adbsideload(std::string arg __unused)
  		operation_end(0);
  	} else {
  		gui_msg("start_sideload=Starting ADB sideload feature...");
-+#ifdef TW_KEEP_MTP_ON_SIDELOAD
-+		bool mtp_was_enabled = DataManager::GetIntValue("tw_mtp_enabled");
-+		if (!mtp_was_enabled) {
-+			PartitionManager.Enable_MTP();
+-		bool mtp_was_enabled = TWFunc::Toggle_MTP(false);
++		sideload_restore_mtp = DataManager::GetIntValue("tw_mtp_enabled");
++		if (sideload_restore_mtp) {
++			PartitionManager.Disable_MTP();
++			usleep(500000);
 +		}
-+#else
- 		bool mtp_was_enabled = TWFunc::Toggle_MTP(false);
-+#endif
  
  		// wait for the adb connection
  		Device::BuiltinAction reboot_action = Device::REBOOT_BOOTLOADER;
-@@ -1595,7 +1617,13 @@ int GUIAction::adbsideload(std::string arg __unused)
+@@ -1595,7 +1625,6 @@ int GUIAction::adbsideload(std::string arg __unused)
  			if (wipe_dalvik)
  				PartitionManager.Wipe_Dalvik_Cache();
  		}
-+#ifdef TW_KEEP_MTP_ON_SIDELOAD
-+		if (!mtp_was_enabled) {
-+			PartitionManager.Disable_MTP();
-+		}
-+#else
- 		TWFunc::Toggle_MTP(mtp_was_enabled);
-+#endif
+-		TWFunc::Toggle_MTP(mtp_was_enabled);
  		reinject_after_flash();
  		operation_end(ret);
  	}
-@@ -1614,15 +1642,35 @@ int GUIAction::adbsideloadcancel(std::string arg __unused)
+@@ -1614,16 +1643,36 @@ int GUIAction::adbsideloadcancel(std::string arg __unused)
  	sideload_child_pid = GetMiniAdbdPid();
  	if (!sideload_child_pid) {
  		LOGERR("Unable to get child ID\n");
 +		RestoreAdbUsbConfigAfterSideload();
-+		DataManager::SetValue("tw_page_done", "1");
++		ExitSideloadToRecoveryPage();
  		return 0;
  	}
 -	::sleep(1);
@@ -288,10 +303,12 @@ index 0d09400..15c9e2e 100755
 +		waitpid(sideload_child_pid, &status, 0);
 +	}
  	sideload_child_pid = 0;
+-	DataManager::SetValue("tw_page_done", "1"); // For OpenRecoveryScript support
 +	RestoreAdbUsbConfigAfterSideload();
- 	DataManager::SetValue("tw_page_done", "1"); // For OpenRecoveryScript support
++	ExitSideloadToRecoveryPage();
  	return 0;
  }
+ 
 diff --git a/gui/libguitwrp_defaults.go b/gui/libguitwrp_defaults.go
 index b1e114e..4f9ed1b 100644
 --- a/gui/libguitwrp_defaults.go
@@ -807,7 +824,7 @@ index 3197ec1..27346b2 100755
  ifneq (,$(filter $(TW_INCLUDE_REPACKTOOLS) $(TW_INCLUDE_RESETPROP) $(TW_INCLUDE_LIBRESETPROP), true))
      ifeq ($(wildcard external/magisk-prebuilt/Android.mk),)
 diff --git a/twrpinstall/adb_install.cpp b/twrpinstall/adb_install.cpp
-index 5486b7e..d1afd45 100755
+index 5486b7e..2bd7ee5 100755
 --- a/twrpinstall/adb_install.cpp
 +++ b/twrpinstall/adb_install.cpp
 @@ -29,8 +29,10 @@
@@ -821,7 +838,7 @@ index 5486b7e..d1afd45 100755
  #include <utility>
  #include <vector>
  
-@@ -56,14 +58,100 @@
+@@ -56,14 +58,86 @@
  using CommandFunction = std::function<std::pair<bool, bool>()>;
  
  pid_t child;
@@ -866,20 +883,6 @@ index 5486b7e..d1afd45 100755
 +  }
 +}
 +
-+static void RestoreUsbConfigAfterSideload(const std::string& old_state) {
-+  std::string restore_state = "adb";
-+
-+  android::base::SetProperty("sys.usb.ffs.ready", "0");
-+  if (!SetUsbConfig("adb_reset")) {
-+    LOG(ERROR) << "Failed to reset USB config after sideload";
-+  }
-+  if (!SetUsbConfig(restore_state)) {
-+    LOG(ERROR) << "Failed to restore USB config to " << restore_state;
-+    if (old_state != "adb" && !SetUsbConfig("adb")) {
-+      LOG(ERROR) << "Failed to restore fallback USB config adb after sideload";
-+    }
-+  }
-+}
 +
 +static bool WaitForMinadbdExit(pid_t pid, int* status, bool* status_unavailable,
 +                               std::chrono::milliseconds timeout) {
@@ -924,7 +927,7 @@ index 5486b7e..d1afd45 100755
  }
  
  // Parses the minadbd command in |message|; returns MinadbdCommand::kError upon errors.
-@@ -125,6 +213,7 @@ static auto AdbInstallPackageHandler(int* result) {
+@@ -125,6 +199,7 @@ static auto AdbInstallPackageHandler(int* result) {
    // Calling stat() on this magic filename signals the FUSE to exit.
    struct stat st;
    stat(FUSE_SIDELOAD_HOST_EXIT_PATHNAME, &st);
@@ -932,7 +935,7 @@ index 5486b7e..d1afd45 100755
    return std::make_pair(*result == INSTALL_SUCCESS, should_continue);
  }
  
-@@ -231,10 +320,16 @@ static void ListenAndExecuteMinadbdCommands(
+@@ -231,10 +306,16 @@ static void ListenAndExecuteMinadbdCommands(
      for (int n = 0; n < event_count; n++) {
        if (events[n].events & EPOLLHUP) {
          LOG(INFO) << "Socket has been closed";
@@ -949,7 +952,7 @@ index 5486b7e..d1afd45 100755
          kill(minadbd_pid, SIGKILL);
          return;
        }
-@@ -308,11 +403,15 @@ static void CreateMinadbdServiceAndExecuteCommands(
+@@ -308,11 +389,15 @@ static void CreateMinadbdServiceAndExecuteCommands(
    }
  
    minadbd_socket.reset();
@@ -965,7 +968,7 @@ index 5486b7e..d1afd45 100755
      return;
    }
  
-@@ -322,16 +421,24 @@ static void CreateMinadbdServiceAndExecuteCommands(
+@@ -322,28 +407,34 @@ static void CreateMinadbdServiceAndExecuteCommands(
      listener_thread.join();
    }
  
@@ -994,14 +997,15 @@ index 5486b7e..d1afd45 100755
    signal(SIGPIPE, SIG_DFL);
  }
  
-@@ -339,11 +446,10 @@ static void CreateMinadbdServiceAndExecuteCommands(
+   int twrp_sideload(const char* install_file, Device::BuiltinAction* reboot_action) {
  
-   // Save the usb state to restore after the sideload operation.
-   std::string usb_state = android::base::GetProperty("sys.usb.state", "none");
+-  // Save the usb state to restore after the sideload operation.
+-  std::string usb_state = android::base::GetProperty("sys.usb.state", "none");
 -  // Clean up state and stop adbd.
 -  if (usb_state != "none" && !SetUsbConfig("none")) {
 -    LOG(ERROR) << "Failed to clear USB config";
 -    return INSTALL_ERROR;
++  // Keep the sideload USB gadget active on completion; only cancellation restores MTP/ADB.
 +  if (!SetUsbConfig("sideload_prepare")) {
 +    LOG(ERROR) << "Failed to prepare USB config before sideload";
    }
@@ -1009,7 +1013,7 @@ index 5486b7e..d1afd45 100755
  
    int install_result = INSTALL_ERROR;
    std::map<MinadbdCommand, CommandFunction> command_map{
-@@ -363,17 +469,7 @@ static void CreateMinadbdServiceAndExecuteCommands(
+@@ -363,17 +454,6 @@ static void CreateMinadbdServiceAndExecuteCommands(
  
    CreateMinadbdServiceAndExecuteCommands(command_map, false, install_file);
  
@@ -1026,6 +1030,5 @@ index 5486b7e..d1afd45 100755
 -  }
 -
 +  ClearSideloadRecoveryCommands();
-+  RestoreUsbConfigAfterSideload(usb_state);
    return install_result;
  }
