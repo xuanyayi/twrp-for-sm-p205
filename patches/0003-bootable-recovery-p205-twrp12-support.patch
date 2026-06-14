@@ -180,7 +180,7 @@ index 5c13ef7..984c60c 100644
      write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "fastboot"
      symlink /config/usb_gadget/g1/functions/ffs.fastboot /config/usb_gadget/g1/configs/b.1/f1
 diff --git a/gui/action.cpp b/gui/action.cpp
-index 0d09400..1dd43bb 100755
+index 0d09400..1fdcdec 100755
 --- a/gui/action.cpp
 +++ b/gui/action.cpp
 @@ -26,16 +26,18 @@
@@ -211,7 +211,7 @@ index 0d09400..1dd43bb 100755
  #include "twinstall.h"
  
  extern "C" {
-@@ -67,11 +70,34 @@ std::set<string> GUIAction::setActionsRunningInCallerThread;
+@@ -67,11 +70,40 @@ std::set<string> GUIAction::setActionsRunningInCallerThread;
  static string zip_queue[10];
  static int zip_queue_index;
  pid_t sideload_child_pid;
@@ -236,6 +236,12 @@ index 0d09400..1dd43bb 100755
 +	}
 +}
 +
++static bool IsMtpAdbUsbActive()
++{
++	return android::base::GetProperty("sys.usb.config", "") == "mtp,adb" ||
++	       android::base::GetProperty("sys.usb.state", "") == "mtp,adb";
++}
++
 +static void ExitSideloadToRecoveryPage() {
 +	DataManager::SetValue("tw_has_cancel", 0);
 +	DataManager::SetValue("tw_show_reboot", 0);
@@ -246,12 +252,12 @@ index 0d09400..1dd43bb 100755
  class ActionThread
  {
  public:
-@@ -1574,7 +1600,11 @@ int GUIAction::adbsideload(std::string arg __unused)
+@@ -1574,7 +1606,11 @@ int GUIAction::adbsideload(std::string arg __unused)
  		operation_end(0);
  	} else {
  		gui_msg("start_sideload=Starting ADB sideload feature...");
 -		bool mtp_was_enabled = TWFunc::Toggle_MTP(false);
-+		sideload_restore_mtp = DataManager::GetIntValue("tw_mtp_enabled");
++		sideload_restore_mtp = IsMtpAdbUsbActive();
 +		if (sideload_restore_mtp) {
 +			PartitionManager.Disable_MTP();
 +			usleep(500000);
@@ -259,7 +265,7 @@ index 0d09400..1dd43bb 100755
  
  		// wait for the adb connection
  		Device::BuiltinAction reboot_action = Device::REBOOT_BOOTLOADER;
-@@ -1595,7 +1625,6 @@ int GUIAction::adbsideload(std::string arg __unused)
+@@ -1595,7 +1631,6 @@ int GUIAction::adbsideload(std::string arg __unused)
  			if (wipe_dalvik)
  				PartitionManager.Wipe_Dalvik_Cache();
  		}
@@ -267,7 +273,7 @@ index 0d09400..1dd43bb 100755
  		reinject_after_flash();
  		operation_end(ret);
  	}
-@@ -1614,16 +1643,36 @@ int GUIAction::adbsideloadcancel(std::string arg __unused)
+@@ -1614,16 +1649,36 @@ int GUIAction::adbsideloadcancel(std::string arg __unused)
  	sideload_child_pid = GetMiniAdbdPid();
  	if (!sideload_child_pid) {
  		LOGERR("Unable to get child ID\n");
@@ -310,7 +316,7 @@ index 0d09400..1dd43bb 100755
  }
  
 diff --git a/gui/libguitwrp_defaults.go b/gui/libguitwrp_defaults.go
-index b1e114e..4f9ed1b 100644
+index b1e114e..36d6ec2 100644
 --- a/gui/libguitwrp_defaults.go
 +++ b/gui/libguitwrp_defaults.go
 @@ -40,6 +40,43 @@ func printCustomThemeWarning(theme string, location string) {
@@ -372,6 +378,163 @@ index b1e114e..4f9ed1b 100644
  	for idx, file := range files {
  		_ = idx
  		fileToCopy := recoveryDir + file
+@@ -77,7 +119,7 @@ func copyThemeResources(ctx android.BaseContext, dirs []string, files []string)
+ 		}
+ 	}
+ 
+-	_props := [3]string{"TW_CUSTOM_BATTERY_POS", "TW_CUSTOM_CPU_POS", "TW_CUSTOM_CLOCK_POS" }
++	_props := [3]string{"TW_CUSTOM_BATTERY_POS", "TW_CUSTOM_CPU_POS", "TW_CUSTOM_CLOCK_POS"}
+ 	props := [3]string{"0", "0", "0"}
+ 	for i, item := range _props {
+ 		if getMakeVars(ctx, item) != "" {
+@@ -102,12 +144,12 @@ func copyThemeResources(ctx android.BaseContext, dirs []string, files []string)
+ 		if i == "ui.xml" {
+ 
+ 			for _, line := range strings.Split(string(data), "\n") {
+-		                if strings.Contains(line, "name=\"font_m\"") {
+-		                      fontsize, err = strconv.Atoi(strings.Split(line, "\"")[5])
+-		                       if err != nil {
+-		                               fmt.Println(err)
+-		                               return
+-		                       }
++				if strings.Contains(line, "name=\"font_m\"") {
++					fontsize, err = strconv.Atoi(strings.Split(line, "\"")[5])
++					if err != nil {
++						fmt.Println(err)
++						return
++					}
+ 				}
+ 				if strings.Contains(line, "resolution") {
+ 					width, err = strconv.Atoi(strings.Split(line, "\"")[1])
+@@ -116,36 +158,36 @@ func copyThemeResources(ctx android.BaseContext, dirs []string, files []string)
+ 						return
+ 					}
+ 				}
+-		        }
++			}
+ 
+-			var cpusize int = (fontsize * 5) + (width/100)
+-			var clocksize int = (fontsize * 4) + (width/100)
+-			var batterysize int = (fontsize * 6) - (width/100)
++			var cpusize int = (fontsize * 5) + (width / 100)
++			var clocksize int = (fontsize * 4) + (width / 100)
++			var batterysize int = (fontsize * 6) - (width / 100)
+ 			var pos_clock_24 string = props[2]
+ 			for j := 0; j < len(props); j++ {
+ 				if props[j] == "left" {
+-					props[j] = strconv.Itoa(width/50)
++					props[j] = strconv.Itoa(width / 50)
+ 					if _props[j] == "TW_CUSTOM_CLOCK_POS" {
+ 						pos_clock_24 = props[j]
+ 					}
+ 				} else if props[j] == "center" {
+ 					if _props[j] == "TW_CUSTOM_BATTERY_POS" {
+-						props[j] = strconv.Itoa( (width/2) - (batterysize*43/100) )
++						props[j] = strconv.Itoa((width / 2) - (batterysize * 43 / 100))
+ 					} else if _props[j] == "TW_CUSTOM_CLOCK_POS" {
+-						pos := (width/2) - (clocksize*45/100)
++						pos := (width / 2) - (clocksize * 45 / 100)
+ 						props[j] = strconv.Itoa(pos)
+-						pos_clock_24 = strconv.Itoa( pos * 31/30 )
++						pos_clock_24 = strconv.Itoa(pos * 31 / 30)
+ 					} else if _props[j] == "TW_CUSTOM_CPU_POS" {
+-						props[j] = strconv.Itoa( (width/2) - (cpusize*41/100) )
++						props[j] = strconv.Itoa((width / 2) - (cpusize * 41 / 100))
+ 					}
+ 				} else if props[j] == "right" {
+ 					if _props[j] == "TW_CUSTOM_BATTERY_POS" {
+-						props[j] = strconv.Itoa( width - batterysize )
++						props[j] = strconv.Itoa(width - batterysize)
+ 					} else if _props[j] == "TW_CUSTOM_CLOCK_POS" {
+ 						props[j] = strconv.Itoa(width - clocksize)
+ 						pos_clock_24 = props[j]
+ 					} else if _props[j] == "TW_CUSTOM_CPU_POS" {
+-						props[j] = strconv.Itoa( width - cpusize )
++						props[j] = strconv.Itoa(width - cpusize)
+ 					}
+ 				}
+ 			}
+@@ -164,7 +206,7 @@ func copyThemeResources(ctx android.BaseContext, dirs []string, files []string)
+ 		}
+ 		// Custom position for status bar items - end
+ 
+-		err = ioutil.WriteFile(twRes + i, []byte(newFile), 0)
++		err = ioutil.WriteFile(twRes+i, []byte(newFile), 0)
+ 		if err != nil {
+ 			fmt.Println(err)
+ 			return
+@@ -181,6 +223,54 @@ func copyCustomTheme(ctx android.BaseContext, customTheme string) {
+ 	copyFile(fileToCopy, fileDest)
+ }
+ 
++func copyThemeExtraIncludes(ctx android.BaseContext, includeFiles []string) []string {
++	var includeNames []string
++	if len(includeFiles) == 0 {
++		return includeNames
++	}
++
++	twRes := ctx.Config().Getenv("OUT") + "/recovery/root/twres/"
++	for _, includeFile := range includeFiles {
++		includeName := path.Base(includeFile)
++		if err := copyFile(getBuildAbsDir(ctx)+includeFile, twRes+includeName); err != nil {
++			fmt.Println(err)
++			continue
++		}
++		includeNames = append(includeNames, includeName)
++	}
++	return includeNames
++}
++
++func prependThemeIncludes(ctx android.BaseContext, includeNames []string) {
++	if len(includeNames) == 0 {
++		return
++	}
++
++	uiFile := ctx.Config().Getenv("OUT") + "/recovery/root/twres/ui.xml"
++	data, err := ioutil.ReadFile(uiFile)
++	if err != nil {
++		fmt.Println(err)
++		return
++	}
++
++	var extraIncludes strings.Builder
++	for _, includeName := range includeNames {
++		extraIncludes.WriteString("\t\t<xmlfile name=\"")
++		extraIncludes.WriteString(includeName)
++		extraIncludes.WriteString("\"/>\n")
++	}
++	oldInclude := "\t<include>\n"
++	newFile := strings.Replace(string(data), oldInclude, oldInclude+extraIncludes.String(), 1)
++	if newFile == string(data) {
++		fmt.Println("Could not add TW_THEME_EXTRA_INCLUDES to twres/ui.xml")
++		return
++	}
++
++	if err = ioutil.WriteFile(uiFile, []byte(newFile), 0); err != nil {
++		fmt.Println(err)
++	}
++}
++
+ func determineTheme(ctx android.BaseContext) string {
+ 	guiWidth := 0
+ 	guiHeight := 0
+@@ -267,13 +357,15 @@ func copyTheme(ctx android.BaseContext) bool {
+ 	if customThemeLoc != "" {
+ 		copyCustomTheme(ctx, customThemeLoc)
+ 	}
++	extraIncludes := strings.Fields(getMakeVars(ctx, "TW_THEME_EXTRA_INCLUDES"))
++	includeNames := copyThemeExtraIncludes(ctx, extraIncludes)
++	prependThemeIncludes(ctx, includeNames)
+ 	return true
+ }
+ 
+ func globalFlags(ctx android.BaseContext) []string {
+ 	var cflags []string
+ 
+-
+ 	if getMakeVars(ctx, "AB_OTA_UPDATER") == "true" {
+ 		cflags = append(cflags, "-DAB_OTA_UPDATER=1")
+ 	}
 diff --git a/gui/theme/common/portrait.xml b/gui/theme/common/portrait.xml
 index 8b5324b..6447ca4 100755
 --- a/gui/theme/common/portrait.xml
@@ -642,7 +805,7 @@ index 184cb16..36717a1 100755
  	else if (Current_File_System == "ext3")
  		maxFileSize = 2 * constTB; //2 TB
 diff --git a/partitionmanager.cpp b/partitionmanager.cpp
-index 2766b4c..9f4c6e3 100755
+index 2766b4c..746b255 100755
 --- a/partitionmanager.cpp
 +++ b/partitionmanager.cpp
 @@ -2786,15 +2786,19 @@ bool TWPartitionManager::Enable_MTP(void) {
@@ -673,7 +836,7 @@ index 2766b4c..9f4c6e3 100755
  		property_set("sys.usb.config", "mtp,adb");
  	}
  	/* To enable MTP debug, use the twrp command line feature:
-@@ -2842,15 +2846,19 @@ bool TWPartitionManager::Disable_MTP(void) {
+@@ -2842,25 +2846,30 @@ bool TWPartitionManager::Disable_MTP(void) {
  	property_set("sys.usb.ffs.mtp.ready", "0");
  	property_get("sys.usb.config", old_value, "");
  	if (strcmp(old_value, "adb") != 0) {
@@ -701,6 +864,19 @@ index 2766b4c..9f4c6e3 100755
  		usleep(2000);
  	}
  #ifdef TW_HAS_MTP
+ 	if (mtppid) {
+ 		LOGINFO("Disabling MTP\n");
+ 		int status;
+-		kill(mtppid, SIGKILL);
++		const pid_t old_mtppid = mtppid;
++		kill(old_mtppid, SIGKILL);
+ 		mtppid = 0;
+ 		// We don't care about the exit value, but this prevents a zombie process
+-		waitpid(mtppid, &status, 0);
++		waitpid(old_mtppid, &status, 0);
+ 		close(mtp_write_fd);
+ 		mtp_write_fd = -1;
+ 	}
 diff --git a/pigz/Android.mk b/pigz/Android.mk
 index 2875fd1..b94cd76 100755
 --- a/pigz/Android.mk
@@ -715,7 +891,7 @@ index 2875fd1..b94cd76 100755
  
  include $(BUILD_EXECUTABLE)
 diff --git a/prebuilt/Android.mk b/prebuilt/Android.mk
-index 3197ec1..27346b2 100755
+index 3197ec1..86ec983 100755
 --- a/prebuilt/Android.mk
 +++ b/prebuilt/Android.mk
 @@ -41,7 +41,9 @@ endif
@@ -728,7 +904,17 @@ index 3197ec1..27346b2 100755
  RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/e2fsck
  RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/e2fsdroid
  RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/mke2fs
-@@ -221,20 +223,20 @@ ifeq ($(TW_INCLUDE_CRYPTO), true)
+@@ -153,7 +155,9 @@ else
+     TW_EXCLUDE_MTP := true
+ endif
+ 
++ifeq ($(TW_EXCLUDE_MTP),)
+ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libtwrpmtp-ffs.so
++endif
+ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libext4_utils.so
+ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libaosprecovery.so
+ ifneq ($(TW_INCLUDE_JPEG),)
+@@ -221,20 +225,20 @@ ifeq ($(TW_INCLUDE_CRYPTO), true)
          RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/keystore2
          RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/keystore_cli
          RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.system.wifi.keystore@1.0.so
@@ -756,7 +942,7 @@ index 3197ec1..27346b2 100755
          RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.system.suspend@1.0.so
          RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/fscryptpolicyget
          ifneq ($(TW_EXCLUDE_LIBXML2), true)
-@@ -274,10 +276,12 @@ ifeq ($(TW_INCLUDE_CRYPTO), true)
+@@ -274,10 +278,12 @@ ifeq ($(TW_INCLUDE_CRYPTO), true)
      endif
  endif
  ifneq ($(filter $(TW_INCLUDE_CRYPTO) $(TW_SUPPORT_INPUT_AIDL_HAPTICS), true),)
@@ -769,7 +955,7 @@ index 3197ec1..27346b2 100755
  ifeq ($(AB_OTA_UPDATER), true)
      RECOVERY_BINARY_SOURCE_FILES += $(TARGET_RECOVERY_ROOT_OUT)/system/bin/update_engine_sideload
      RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_VENDOR_EXECUTABLES)/hw/android.hardware.boot@1.0-service
-@@ -349,8 +353,10 @@ else
+@@ -349,8 +355,10 @@ else
      RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/mkntfs
  endif
  ifeq ($(BOARD_HAS_NO_REAL_SDCARD),)
@@ -780,7 +966,7 @@ index 3197ec1..27346b2 100755
  ifneq ($(TW_OZIP_DECRYPT_KEY),)
      RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/ozip_decrypt
  endif
-@@ -379,6 +385,7 @@ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hidl.tok
+@@ -379,6 +387,7 @@ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hidl.tok
  ifneq ($(wildcard system/core/libkeyutils/Android.bp),)
  	RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libkeyutils.so
  endif
@@ -788,7 +974,7 @@ index 3197ec1..27346b2 100755
  ifeq ($(TARGET_ARCH), arm64)
  	RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libclang_rt.ubsan_standalone-aarch64-android.so
  endif
-@@ -397,6 +404,7 @@ endif
+@@ -397,6 +406,7 @@ endif
  ifeq ($(TARGET_ARCH), mips64)
  	RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libclang_rt.ubsan_standalone-mips64-android.so
  endif
@@ -796,7 +982,7 @@ index 3197ec1..27346b2 100755
  RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/liblogwrap.so
  RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libext2_misc.so
  
-@@ -507,6 +515,7 @@ ifeq ($(TW_USE_TOOLBOX), true)
+@@ -507,6 +517,7 @@ ifeq ($(TW_USE_TOOLBOX), true)
  endif
  
  #TWRP App "placeholder"
@@ -804,7 +990,7 @@ index 3197ec1..27346b2 100755
  include $(CLEAR_VARS)
  LOCAL_MODULE := me.twrp.twrpapp.apk
  LOCAL_MODULE_TAGS := optional
-@@ -514,8 +523,10 @@ LOCAL_MODULE_CLASS := EXECUTABLES
+@@ -514,8 +525,10 @@ LOCAL_MODULE_CLASS := EXECUTABLES
  LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
  LOCAL_SRC_FILES := $(LOCAL_MODULE)
  include $(BUILD_PREBUILT)
@@ -815,7 +1001,7 @@ index 3197ec1..27346b2 100755
  include $(CLEAR_VARS)
  LOCAL_MODULE := privapp-permissions-twrpapp.xml
  LOCAL_MODULE_TAGS := optional
-@@ -523,6 +534,7 @@ LOCAL_MODULE_CLASS := EXECUTABLES
+@@ -523,6 +536,7 @@ LOCAL_MODULE_CLASS := EXECUTABLES
  LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
  LOCAL_SRC_FILES := $(LOCAL_MODULE)
  include $(BUILD_PREBUILT)
@@ -824,7 +1010,7 @@ index 3197ec1..27346b2 100755
  ifneq (,$(filter $(TW_INCLUDE_REPACKTOOLS) $(TW_INCLUDE_RESETPROP) $(TW_INCLUDE_LIBRESETPROP), true))
      ifeq ($(wildcard external/magisk-prebuilt/Android.mk),)
 diff --git a/twrpinstall/adb_install.cpp b/twrpinstall/adb_install.cpp
-index 5486b7e..2bd7ee5 100755
+index 5486b7e..b49f744 100755
 --- a/twrpinstall/adb_install.cpp
 +++ b/twrpinstall/adb_install.cpp
 @@ -29,8 +29,10 @@
@@ -838,7 +1024,7 @@ index 5486b7e..2bd7ee5 100755
  #include <utility>
  #include <vector>
  
-@@ -56,14 +58,86 @@
+@@ -56,14 +58,124 @@
  using CommandFunction = std::function<std::pair<bool, bool>()>;
  
  pid_t child;
@@ -848,10 +1034,17 @@ index 5486b7e..2bd7ee5 100755
    return child;
  }
  
++static void LogUsbState(const std::string& prefix) {
++  LOG(INFO) << prefix << ": config=" << android::base::GetProperty("sys.usb.config", "")
++            << " state=" << android::base::GetProperty("sys.usb.state", "")
++            << " ffs.ready=" << android::base::GetProperty("sys.usb.ffs.ready", "")
++            << " adbd=" << android::base::GetProperty("init.svc.adbd", "");
++}
++
  static bool SetUsbConfig(const std::string& state) {
 -  android::base::SetProperty("sys.usb.config", state);
 -  return android::base::WaitForProperty("sys.usb.state", state);
-+  static constexpr auto kUsbStateTimeout = std::chrono::seconds(10);
++  static constexpr auto kUsbStateTimeout = std::chrono::seconds(20);
 +  LOG(INFO) << "Setting USB config to " << state;
 +  if (!android::base::SetProperty("sys.usb.config", state)) {
 +    LOG(ERROR) << "Failed to set sys.usb.config to " << state;
@@ -876,13 +1069,44 @@ index 5486b7e..2bd7ee5 100755
 +  unlink("/data/cache/recovery/command");
 +}
 +
-+static void WaitForAdbdStoppedBeforeSideload() {
-+  if (!android::base::WaitForProperty("init.svc.adbd", "stopped", std::chrono::seconds(3))) {
-+    LOG(ERROR) << "Timed out waiting for normal adbd to stop before sideload, current state="
-+               << android::base::GetProperty("init.svc.adbd", "");
++static bool WaitForAdbdStoppedBeforeSideload() {
++  if (android::base::WaitForProperty("init.svc.adbd", "stopped", std::chrono::seconds(10))) {
++    return true;
 +  }
++
++  LOG(ERROR) << "Timed out waiting for normal adbd to stop before sideload, current state="
++             << android::base::GetProperty("init.svc.adbd", "");
++  return false;
 +}
 +
++static bool PrepareUsbForSideload() {
++  LogUsbState("Preparing sideload USB, initial state");
++
++  android::base::SetProperty("sys.usb.ffs.ready", "0");
++  android::base::SetProperty("ctl.stop", "adbd");
++
++  if (!SetUsbConfig("none")) {
++    LOG(ERROR) << "Failed to clear USB config before sideload";
++    return false;
++  }
++
++  if (!WaitForAdbdStoppedBeforeSideload()) {
++    LogUsbState("normal adbd still running before sideload");
++    return false;
++  }
++
++  // Give Windows a real disconnect window before minadbd publishes the sideload interface.
++  usleep(1500000);
++
++  if (!SetUsbConfig("sideload_prepare")) {
++    LOG(ERROR) << "Failed to prepare USB config before sideload";
++    return false;
++  }
++
++  usleep(500000);
++  LogUsbState("Prepared sideload USB");
++  return true;
++}
 +
 +static bool WaitForMinadbdExit(pid_t pid, int* status, bool* status_unavailable,
 +                               std::chrono::milliseconds timeout) {
@@ -927,7 +1151,7 @@ index 5486b7e..2bd7ee5 100755
  }
  
  // Parses the minadbd command in |message|; returns MinadbdCommand::kError upon errors.
-@@ -125,6 +199,7 @@ static auto AdbInstallPackageHandler(int* result) {
+@@ -125,6 +237,7 @@ static auto AdbInstallPackageHandler(int* result) {
    // Calling stat() on this magic filename signals the FUSE to exit.
    struct stat st;
    stat(FUSE_SIDELOAD_HOST_EXIT_PATHNAME, &st);
@@ -935,7 +1159,7 @@ index 5486b7e..2bd7ee5 100755
    return std::make_pair(*result == INSTALL_SUCCESS, should_continue);
  }
  
-@@ -231,10 +306,16 @@ static void ListenAndExecuteMinadbdCommands(
+@@ -231,10 +344,16 @@ static void ListenAndExecuteMinadbdCommands(
      for (int n = 0; n < event_count; n++) {
        if (events[n].events & EPOLLHUP) {
          LOG(INFO) << "Socket has been closed";
@@ -952,7 +1176,7 @@ index 5486b7e..2bd7ee5 100755
          kill(minadbd_pid, SIGKILL);
          return;
        }
-@@ -308,11 +389,15 @@ static void CreateMinadbdServiceAndExecuteCommands(
+@@ -308,11 +427,15 @@ static void CreateMinadbdServiceAndExecuteCommands(
    }
  
    minadbd_socket.reset();
@@ -968,7 +1192,7 @@ index 5486b7e..2bd7ee5 100755
      return;
    }
  
-@@ -322,28 +407,34 @@ static void CreateMinadbdServiceAndExecuteCommands(
+@@ -322,26 +445,31 @@ static void CreateMinadbdServiceAndExecuteCommands(
      listener_thread.join();
    }
  
@@ -1004,16 +1228,12 @@ index 5486b7e..2bd7ee5 100755
 -  // Clean up state and stop adbd.
 -  if (usb_state != "none" && !SetUsbConfig("none")) {
 -    LOG(ERROR) << "Failed to clear USB config";
--    return INSTALL_ERROR;
 +  // Keep the sideload USB gadget active on completion; only cancellation restores MTP/ADB.
-+  if (!SetUsbConfig("sideload_prepare")) {
-+    LOG(ERROR) << "Failed to prepare USB config before sideload";
++  if (!PrepareUsbForSideload()) {
+     return INSTALL_ERROR;
    }
-+  WaitForAdbdStoppedBeforeSideload();
  
-   int install_result = INSTALL_ERROR;
-   std::map<MinadbdCommand, CommandFunction> command_map{
-@@ -363,17 +454,6 @@ static void CreateMinadbdServiceAndExecuteCommands(
+@@ -363,17 +491,6 @@ static void CreateMinadbdServiceAndExecuteCommands(
  
    CreateMinadbdServiceAndExecuteCommands(command_map, false, install_file);
  

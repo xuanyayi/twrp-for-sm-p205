@@ -23,8 +23,9 @@ Patch summary:
   `BOARD_PLAT_*_SEPOLICY_DIR` compatibility reads that produce Android 12.1
   sepolicy warnings in this tree.
 - `0003-bootable-recovery-p205-twrp12-support.patch`: adds the P205 recovery
-  runtime changes for Samsung configfs USB handling, selected language resource
-  copying, sdfat/exfat handling, and deterministic `gzip`/`gunzip` symlinks.
+  runtime changes for Samsung configfs USB handling, encrypted-data ADB
+  sideload enumeration, selected language resource copying, sdfat/exfat
+  handling, and deterministic `gzip`/`gunzip` symlinks.
 - `0004-mkbootimg-preserve-empty-second-address.patch`: adds the
   `--set_empty_second_addr` option required by the Samsung recovery header.
 - `0005-vendor-twrp-export-p205-soong-vars.patch`: exports the P205 TWRP

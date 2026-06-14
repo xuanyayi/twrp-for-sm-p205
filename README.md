@@ -153,11 +153,11 @@ tar --sort=name \
   --mtime='@1781100000' \
   --owner=0 --group=0 --numeric-owner \
   -H ustar \
-  -cf twrp-3.7.1_12-0-p205-repro-20260610.tar \
+  -cf twrp-3.7.1_12-0-20260614-150146.tar \
   recovery.img
 ```
 
-Flash `twrp-3.7.1_12-0-p205-repro-20260610.tar` with Odin's AP slot.
+Flash `twrp-3.7.1_12-0-20260614-150146.tar` with Odin's AP slot.
 
 In Odin, disable `Auto Reboot` before flashing. After Odin reports `PASS`, do
 not let the tablet boot Android first. Hold `Power + Volume Down` to leave
@@ -178,6 +178,9 @@ and keep holding until recovery starts.
   `BUILD_HOSTNAME=repro`.
 - Optional TWRP extras are trimmed to keep `recovery.img` inside the stock
   recovery partition size.
+- The P205 bootable/recovery patch includes a forced USB disconnect and
+  minadbd handoff so ADB sideload enumerates on Windows even when `/data` is
+  encrypted and MTP is not running.
 
 ## Common Problems
 
